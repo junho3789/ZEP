@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; overflow: hidden; }
+body { font-family: system-ui, -apple-system, sans-serif; color: #fff5db; }
+.wallet { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 230px;
+  padding: 10px 14px; border: 1px solid #b69245; border-radius: 14px;
+  background: #251d15; box-shadow: 0 3px 10px #0004; }
+.coin { flex-shrink: 0; display: grid; place-items: center; width: 30px; height: 30px;
+  border-radius: 50%; background: #eaba48; color: #4a330d; font-weight: 800; font-size: 18px;
+  border: 3px solid #ffd879; }
+.details { min-width: 0; }
+.caption { color: #cbb98e; font-size: 11px; margin-bottom: 2px; }
+#balance { font-size: 22px; font-weight: 750; font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere; line-height: 1.15; }
+@media(max-width: 170px), (max-height: 65px) {
+ .wallet { padding: 6px 8px; gap: 6px; border-radius: 10px; }
+ .coin { width: 24px; height: 24px; font-size: 14px; }
+ #balance { font-size: 16px; }
+}
+</style>
+</head>
+<body>
+<div class="wallet" role="status" aria-live="polite" aria-label="보유 코인">
+  <span class="coin" aria-hidden="true">C</span>
+  <div class="details"><div class="caption">보유 코인</div><div id="balance">불러오는 중…</div></div>
+</div>
+<script>
+(function () {
+  var balance = document.getElementById("balance");
+  window.addEventListener("message", function (event) {
+    if (event.source !== window.parent) return;
+    var data = event.data;
+    if (!data || data.type !== "coin_balance") return;
+    if (data.status !== "ok" || typeof data.coins !== "number" || !isFinite(data.coins) ||
+        data.coins < 0 || Math.floor(data.coins) !== data.coins || data.coins > 9007199254740991) {
+      balance.textContent = "확인 불가";
+      return;
+    }
+    balance.textContent = String(data.coins).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  });
+  // The parent sends the latest balance after receiving this ready handshake.
+  window.parent.postMessage({ type: "coin_hud_ready" }, "*");
+}());
+</script>
+</body>
+</html>

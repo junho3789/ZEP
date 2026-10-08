@@ -1,0 +1,27 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const fs = require('node:fs');
+const path = require('node:path');
+test('HTML widget waits for server balance, validates messages, and formats coins safely', () => {
+    const html = fs.readFileSync(path.join(__dirname, '../coin-hud.html'), 'utf8');
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+    const node = {textContent: '불러오는 중…'};
+    const posted = [];
+    let receive;
+    const parent = {postMessage(data) { posted.push(data); }};
+    const window = {parent, addEventListener(name, fn) { assert.equal(name, 'message'); receive = fn; }};
+    vm.runInNewContext(script, {window, document: {getElementById() { return node; }}});
+    assert.equal(posted[0].type, 'coin_hud_ready');
+    assert.equal(node.textContent, '불러오는 중…');
+    receive({source: {}, data: {type: 'coin_balance', status: 'ok', coins: 99}});
+    assert.equal(node.textContent, '불러오는 중…');
+    receive({source: parent, data: {type: 'coin_balance', status: 'ok', coins: 1234567}});
+    assert.equal(node.textContent, '1,234,567');
+    receive({source: parent, data: {type: 'coin_balance', status: 'storage_error', coins: null}});
+    assert.equal(node.textContent, '확인 불가');
+    receive({source: parent, data: {type: 'coin_balance', status: 'ok', coins: '<script>'}});
+    assert.equal(node.textContent, '확인 불가');
+    receive({source: parent, data: {type: 'coin_balance', status: 'ok', coins: 0}});
+    assert.equal(node.textContent, '0');
+});

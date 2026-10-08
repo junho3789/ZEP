@@ -1,176 +1,70 @@
 # ZEP Script Project
 
-## 번호·값 상호작용 연결 진단 (진행 중)
+ZEP Script 상호작용 오브젝트의 번호·값으로 코인을 지급하고, **좌상단에 개인 보유 코인을 표시**합니다. 코인은 앱 내부 점수이며 ZEP 결제 재화가 아닙니다.
 
-맵 편집기의 `ZEP Script 상호작용` 화면에는 번호와 값이 있습니다. 좌표 기반 보상을 이 설정으로 전환하기 위해 실제 이벤트 전달 형식을 먼저 확인합니다. 기존 `main.js`와 보상 ZIP은 아직 좌표 방식이며 변경하지 않았습니다.
+## ZEP 적용 방법
 
-현재 진단용 ZIP은 **`dist/zep-interaction-probe-chat.zepapp.zip`**입니다. `tools/interaction-probe.js`를 최상위 `main.js`로 담습니다. `player.sendMessage`로 해당 유저의 **개인 채팅에** 진단 메시지를 남깁니다. 상단 메시지와 전체 채팅은 사용하지 않습니다. 보상을 지급하거나 플레이어 저장소를 읽고 쓰지 않습니다. 현재 앱의 코드를 임시로 이 ZIP으로 업데이트하고, 아래처럼 확인하세요. 앱을 삭제·재설치할 필요는 없습니다. 기존 `dist/zep-interaction-probe.zepapp.zip`은 이전 상단 출력 버전으로 보존했습니다.
+1. GitHub의 `dist/zep-coins-hud.zepapp.zip`을 다운로드합니다. 기존 ZIP과 진단 ZIP은 이전 산출물로 보존했습니다.
+2. ZEP **나의 앱**에서 기존 앱을 새 ZIP으로 업데이트합니다. 압축을 풀지 마세요. 맵 접속 시 자동 실행하려면 **Normal app** 유형으로 대상 맵의 설정에 적용합니다. UI 메뉴는 현재 ZEP 버전에 따라 다를 수 있습니다.
+3. 맵 편집기에서 오브젝트 유형을 **ZEP Script 상호작용**으로 설정합니다.
+4. **번호 `1`, 값 `coin:10`, 실행 범위 `1`, 실행 방법 `F키를 눌러 실행`**으로 설정하고 저장합니다. 위치는 자유롭게 정할 수 있습니다. 좌표나 레이어를 코드에 입력하지 않습니다.
+5. 재접속해 좌상단 코인 카드를 확인합니다. 오브젝트 앞에서 F를 누르면 코인이 지급되고 잔액이 갱신됩니다.
+6. 다시 F를 눌러 중복 방지를 확인하고, 같은 계정으로 재접속해 잔액과 획득 기록 유지 여부를 확인합니다.
 
-1. 오브젝트 유형을 `ZEP Script 상호작용`으로 지정합니다.
-2. 번호 `1`, 값 `coin:10`, 실행 범위 `1`, 실행 방법 `F키를 눌러 실행`을 설정하고 맵을 저장합니다.
-3. 맵에 재접속해 채팅의 `[ZEP 진단 v2]` 접두어와 `상호작용 진단 앱 실행됨` 메시지를 확인합니다. 실제 접두어에는 메시지 순번도 포함됩니다.
-4. 오브젝트에서 F를 누르고 채팅에 `!diag`를 입력합니다. 관측 횟수와 최근 접촉·F 이벤트가 채팅에 표시됩니다. F 이벤트가 0이라면 번호 연결 방식을 더 확인해야 하며, 접촉만으로 F 실행을 추정하지 않습니다. 이전 상단 메시지는 덮어써질 수 있었으므로 기존 캡처만으로 F 이벤트가 없었다고 단정하지 않습니다.
-5. **같은 오브젝트의 번호만 `1`에서 `2`로 변경**하고 값은 `coin:10`을 유지합니다. 맵을 저장하고 재접속한 뒤 F와 `!diag`를 다시 실행합니다. 두 결과를 비교하면 어떤 필드가 번호와 함께 변경되는지 확인할 수 있습니다. `!diag-reset`으로 현재 세션의 메모리 진단 기록만 지울 수 있습니다.
+## 코인 UI
 
-### 실제 캡처에서 확인한 결과
+갈색 카드와 금색 코인 아이콘, `보유 코인` 제목, `1,234` 형식의 숫자를 표시합니다. 로딩 중에는 `불러오는 중…`, 데이터 오류는 `확인 불가`로 표시합니다.
 
-```text
-접촉 이벤트 x=26, y=15, tileID=291295958
-type=21, param1="coin:10", param2=null, param3=null, param4=null
-```
+공식 `player.showWidgetResponsive("coin-hud.html", 8, 68, 80, 2)`를 사용합니다. 인자는 위·오른쪽·아래·왼쪽 여백의 화면 대비 %입니다. 좌상단에 배치되며, 실제 PC·모바일에서 ZEP 기본 UI와의 겹침과 크기를 확인한 후 여백 및 HTML 스타일을 조정할 수 있습니다.
 
-상호작용 타입 `21`이 정상 인식되고, 이 사례의 편집기 **값 `coin:10`은 `param1`에 전달**됩니다. 번호가 `param1`, 값이 `param2`라는 가정은 이 결과와 맞지 않습니다. `tileID=291295958`을 편집기 번호 `1`로 간주하지 않습니다. 새 진단에서는 `index`, `text`, `subType`, `subText`, `triggerByTouch`, `activeDistance`도 표시하여 번호와 실행 설정을 조사합니다. 번호 필드가 확인되기 전에는 보상 지급을 연결하지 않습니다. 동일 접촉이 반복되면 채팅 출력은 생략하고 횟수만 누적하지만, F 이벤트는 매번 남깁니다.
+위젯이 준비됐다는 메시지를 받은 뒤 현재 잔액을 전달합니다. 성공적인 지급 직후에도 갱신하므로 퀴즈 보상이 공통 함수를 사용하면 같은 UI에 반영됩니다. 위젯으로 보상 지급을 요청하는 기능은 없습니다. 퇴장하면 위젯을 제거합니다. UI 갱신 오류가 저장된 보상을 취소하지 않습니다. 지급·중복 안내는 개인 채팅이며, `!coins`로 잔액을 다시 확인할 수 있습니다.
 
-공식 SDK에서 확인된 API만 사용합니다: `App.onJoinPlayer`, `App.onLeavePlayer`, `App.onSay`, `App.onTriggerObject`, `App.onObjectTouched`, `Map.getObjectWithKey`, `player.sendMessage`. 개인 채팅 API는 공식 `ScriptPlayer.d.ts`에 정의되어 있습니다. 상호작용 타입 `21`과 오브젝트 필드도 SDK에 정의되어 있습니다. 편집기 번호가 어떤 필드나 이벤트 인자로 전달되는지는 아직 확인되지 않았습니다. `getObjectWithKey`가 맵 편집기 오브젝트까지 조회하는지도 실기 확인 대상이며, 실패해도 원래 F 이벤트 인자는 표시합니다. F 콜백의 원시 인자 목록도 표시하여 SDK 정의와 실제 인자의 차이를 확인합니다. 조회 실패 시에는 데이터나 오류 객체 대신 진단 상태만 출력합니다.
+## 번호와 값
 
-진단 테스트: `node --test tests/interaction-probe.test.js`. 채팅 출력, 실제 캡처 데이터 처리, 반복 출력 억제, 이벤트 횟수, 원시 인자, 기록 초기화와 저장소 미접근을 검증합니다. 실제 ZEP의 번호 매핑을 검증하지는 않습니다. 재빌드 명령은 아래와 같습니다. 기존 ZIP과 내용이 달라지면 다른 `--output` 이름을 지정하세요.
+| 번호 | 값 | 동작 |
+| --- | --- | --- |
+| `1` | `coin:10` | 10코인 지급 |
+| `2` | `coin:20` | 20코인 지급 |
+| `3` | `balance` | 잔액 표시 갱신 및 개인 채팅 안내 |
 
-```sh
-python3 build.py --entry tools/interaction-probe.js
-```
+번호는 선행 0 없는 1~999999999 정수, 지급액은 1~999999 정수입니다. 소수·음수·공백·알 수 없는 명령은 지급하지 않습니다. 독립된 보상에는 다른 번호를 사용하세요. 같은 번호는 위치나 지급액을 바꿔도 유저별 한 번만 받을 수 있습니다. 번호를 바꾸면 새 보상이 됩니다. 여러 맵에서도 스페이스 내 번호를 중복하지 않도록 운영하세요.
 
-진단 결과가 확보되면 번호별 보상과 값 명령을 연결하고 새 보상 ZIP을 만들 예정입니다.
+가이드 207쪽에 따라 `App.onObjectTouched`에서 `obj.type === 21`, 번호 `obj.text`, 값 `obj.param1`을 읽습니다. 이 이벤트는 충돌 또는 상호작용에 반응하므로 F/바로 실행은 맵 편집기 설정을 따릅니다. 스크립트가 별도로 F 키만 허용하지는 않습니다. `tileID`는 보상 번호가 아닙니다.
 
-ZEP 맵의 지정 오브젝트와 **F 키로 상호작용**하면 코인을 지급하는 스크립트입니다.
-기본 설정은 일반 오브젝트 레이어 `3`, 타일 좌표 `(10, 10)`, 보상 `10`코인입니다.
-접속할 때 잔액을 표시하며, 유저별 잔액과 이미 받은 보상 ID를 함께 저장합니다.
-오브젝트 보상은 **유저마다 한 번** 받을 수 있습니다. 다른 유저는 별도로 받습니다.
-이 코인은 앱 내부 점수이며 ZEP 결제 재화가 아닙니다.
+## 저장과 이전 버전 호환
 
-## 파일 구성
+`player.storage` JSON의 `zepCoinRewards`에 version=1, coins, claimed를 저장하며 다른 필드는 보존합니다. 번호 `1`은 기존 `object:lobby:treasure-01` ID를 사용하여 이미 저장된 획득 기록을 유지합니다. 다른 번호는 `object:script:<번호>` ID를 사용합니다.
 
-| 파일 | 용도 |
-| --- | --- |
-| `main.js` | ZEP에서 실행되는 코드 및 보상 설정 |
-| `build.py` | 구문 검사·테스트 후 업로드 ZIP 생성 |
-| `tests/coins.test.js` | ZEP API 모의 객체를 이용한 로컬 테스트 |
-| `dist/zep-coins.zepapp.zip` | 기본 설정으로 만든 업로드용 ZIP |
+지급마다 잔액과 획득 기록을 함께 대입하고 **`player.save()`를 호출**합니다(가이드 373·426쪽). 기존 좌표 버전에는 save 호출이 빠져 있었습니다. 이미 저장되지 않은 과거 데이터까지 자동 복구하지는 못합니다. 저장 범위는 같은 스페이스의 해당 플레이어입니다.
 
-외부 패키지, 데이터베이스, API 키는 필요하지 않습니다. 로컬 개발에는 Node.js 18 이상과 Python 3.9 이상을 사용하세요. 이 환경에서는 Node.js 24.19.0과 Python 3.12.14로 검증했습니다.
+손상 JSON·지원하지 않는 버전·잘못된 잔액은 초기화하지 않고 지급을 차단합니다. 자체 한도는 유저당 획득 기록 1,000개와 JavaScript 안전 정수 범위이며 ZEP 저장 용량 보장치가 아닙니다. save 예외는 메모리 문자열을 이전 값으로 복원하고 실패를 반환합니다. 영구 저장 완료 확인과 다중 서버 원자적 트랜잭션은 API에서 확인되지 않았습니다. 경쟁 쓰기, 게스트 지속성, 다른 계정·스페이스, 앱 삭제·재설치는 별도 검증 대상입니다.
 
-## 1. 설치와 로컬 테스트
+## 개발·테스트·ZIP
 
-1. Git과 Node.js, Python을 설치합니다. Windows에서는 명령어 `python3` 대신 `py -3`을 사용할 수 있습니다.
-2. 터미널에서 저장소를 내려받고 폴더로 이동합니다.
-
-   ```sh
-   git clone https://github.com/junho3789/ZEP.git
-   cd ZEP
-   ```
-
-   이미 저장소가 있으면 기존 폴더를 사용하세요. 기존 작업을 지우거나 강제 초기화하지 마세요.
-
-3. 테스트를 실행합니다.
-
-   ```sh
-   node --check main.js
-   node --test tests/coins.test.js
-   ```
-
-4. ZIP을 생성합니다. 이 명령은 테스트도 실행합니다.
-
-   ```sh
-   python3 build.py
-   ```
-
-   `dist/zep-coins.zepapp.zip`이 생성됩니다. ZIP 최상위에 `main.js`가 있으며 테스트나 개발 파일은 포함되지 않습니다. 같은 내용이면 재실행해도 파일을 변경하지 않습니다. 기존 ZIP과 내용이 다르면 덮어쓰지 않고 중단합니다. 코드를 수정한 뒤에는 새 이름을 지정하세요.
-
-   ```sh
-   python3 build.py --output dist/zep-coins-v2.zepapp.zip
-   ```
-
-`node main.js`로 실행하는 앱은 아닙니다. `App`과 `player`는 ZEP 서버가 제공하며, 로컬 테스트는 이를 모의 구현합니다.
-
-## 2. 보상 오브젝트 설정
-
-1. 적용할 ZEP 스페이스의 맵 편집기를 엽니다. 맵과 앱을 수정할 수 있는 권한이 필요합니다.
-2. 보상용 오브젝트를 배치하고 F 상호작용이 가능한 설정을 사용합니다. 단순 장식물이나 통과 타일 접촉은 대상이 아닙니다.
-3. 오브젝트의 **타일 좌표**와 레이어를 확인합니다. 픽셀 좌표가 아닙니다.
-4. `main.js` 상단의 `OBJECT_REWARDS`를 실제 위치에 맞게 수정합니다.
-
-   ```js
-   var OBJECT_REWARDS = [
-       { id: "object:lobby:treasure-01", layer: 3, x: 10, y: 10, coins: 10 },
-       { id: "object:lobby:treasure-02", layer: 5, x: 15, y: 8, coins: 20 }
-   ];
-   ```
-
-   일반 오브젝트는 레이어 `3`, 상단 오브젝트는 `5`입니다. `coins`는 양의 정수입니다. `id`는 오브젝트별로 고유하게 지정합니다. 좌표를 옮겨도 같은 보상이라면 ID를 유지하세요. **ID를 바꾸면 기존 유저도 새로운 보상으로 다시 받을 수 있습니다.** 같은 레이어·좌표를 두 번 등록하면 앱 시작 시 오류로 차단합니다.
-
-5. 수정했다면 위의 빌드 명령으로 새 ZIP을 생성합니다. 기존 ZIP은 수정한 소스를 자동으로 반영하지 않습니다.
-
-맵 이름은 보상 ID를 구분하기 위한 운영자 지정 문자열입니다. 코드가 현재 맵 ID를 자동으로 확인하지는 않습니다. 우선 한 맵에 한 활성 앱 인스턴스로 적용하세요. 여러 맵에 같은 앱을 설치하면 각 맵의 같은 좌표도 보상 대상으로 인식할 수 있습니다.
-
-## 3. ZEP에 적용하기
-
-1. ZEP의 앱 제작/관리 화면에서 스크립트 앱을 만들고, 업로드 항목에 생성한 `.zepapp.zip`을 선택합니다. 압축을 해제하거나 프로젝트 폴더 전체를 다시 압축하지 마세요.
-2. 앱을 저장하고 대상 스페이스/맵에 설치하거나 적용합니다. UI의 메뉴 이름과 공개·승인 요구사항은 계정 및 현재 ZEP 정책에 따라 다를 수 있으므로 [공식 문서](https://docs-script.zep.us/)의 최신 앱 업로드 안내를 따르세요.
-3. 적용한 맵을 다시 열거나 재접속합니다. 새 유저는 `보유 코인: 0` 메시지를 확인할 수 있습니다.
-4. 설정한 오브젝트 가까이에서 F 키를 누릅니다. `+10 코인! 보유 코인: 10`처럼 지급 메시지가 표시됩니다.
-5. 다시 F 키를 눌러 `이미 보상을 받은 오브젝트입니다`가 표시되는지 확인합니다.
-6. 동일 계정으로 같은 스페이스를 나갔다가 재접속하여 잔액과 중복 방지가 유지되는지 확인합니다.
-7. 다른 계정으로 접속해 각각 별도로 보상을 받을 수 있는지도 확인합니다.
-
-실제 ZEP 서버에는 이 개발 환경에서 업로드하거나 접속하지 않았습니다. 위 단계는 배포 후 반드시 수행할 **실기 검증**입니다. 앱 업데이트/서버 재시작 후에도 같은 검증을 반복하세요. 메시지가 없으면 앱 적용 상태, 맵 좌표, 레이어, F 상호작용 설정부터 확인하세요.
-
-## 저장 구조와 안전장치
-
-공식 SDK가 정의하는 `player.storage` 문자열에 다음과 같은 JSON을 저장합니다.
-
-```json
-{
-  "zepCoinRewards": {
-    "version": 1,
-    "coins": 10,
-    "claimed": { "reward:object:lobby:treasure-01": true }
-  }
-}
-```
-
-- 저장 범위는 SDK 설명상 **스페이스 내 플레이어 저장소**입니다. 재접속 시 ZEP가 제공하는 저장 문자열로 잔액과 획득 기록을 복원합니다. 닉네임을 저장 키로 사용하지 않습니다. 계정 변경, 다른 스페이스, 앱 삭제·재설치, 게스트 식별자의 지속성은 여기서 보장하지 않습니다.
-- 지급마다 현재 문자열을 읽고 코인과 획득 기록을 한 문자열로 함께 대입합니다. 퇴장 이벤트만 기다리지 않습니다. 기존 JSON의 다른 필드는 유지합니다. `zepCoinRewards`는 이 프로젝트 전용으로 예약하세요.
-- 잘못된 JSON, 지원하지 않는 버전, 음수·소수 잔액, 저장 예외는 지급을 차단하며 데이터를 초기화하지 않습니다. 관리자 점검 없이 저장소를 지우지 마세요.
-- 정수 정밀도 한계를 넘는 지급과 유저별 획득 기록 1,000개 초과를 차단합니다. 1,000개는 프로젝트 자체 제한이며 ZEP의 저장 용량 보장치가 아닙니다. 저장 용량과 쓰기 제한은 최신 ZEP 문서를 확인해야 합니다.
-- SDK에 저장 성공 콜백, 원자적 비교·갱신, 서버 간 잠금은 명시되어 있지 않습니다. API 대입이 반환됐다는 사실만으로 영구 저장 완료를 확인할 수는 없습니다. 동시 서버/맵 인스턴스의 경쟁 쓰기나 다른 앱의 동일 저장소 쓰기까지 완전히 방지하는 구현은 아닙니다. 그런 운영에는 검증된 외부 저장소와 트랜잭션 설계를 별도로 추가해야 합니다.
-
-## 퀴즈 등 보상 확장
-
-모든 지급은 `CoinRewards.grant(player, rewardId)`로 통합합니다. 새 기능에서 사용할 보상을 앱 초기화 코드에 등록하고, **서버에서 정답을 확인한 이후** 지급 함수를 호출하세요.
-
-```js
-// main.js의 CoinRewards 정의 뒤에서 한 번 등록
-CoinRewards.register("quiz:intro:q1", 25);
-
-// 향후 구현할 정답 검증 핸들러 안에서만 호출
-// var result = CoinRewards.grant(player, "quiz:intro:q1");
-// player.showCenterLabel("보유 코인: " + result.coins);
-```
-
-`grant`의 `status`는 `granted`, `already_claimed`, `unknown_reward`, `storage_error`, `claim_limit`, `balance_limit` 중 하나입니다. 성공 여부를 확인한 뒤 메시지를 표시하세요. `CoinRewards.balance(player)`는 `ok`와 `coins`, 또는 `storage_error`를 반환합니다. 지급액은 등록된 서버 설정에서만 읽으며 사용자 입력을 지급액으로 받지 않습니다. 퀴즈 UI와 정답 검증 자체는 아직 구현하지 않았습니다. 반복 보상은 회차별 고유 ID와 별도 서버 조건을 설계해야 합니다.
-
-## API 근거와 검증 범위
-
-구현은 ZEP 공식 조직의 [zep-script-sdk](https://github.com/zep-us/zep-script-sdk) 커밋 `2ecfa48c4cfae1c085830b54627e09ed358e0675`의 정의를 확인했습니다.
-
-| 사용하는 API | 공식 소스와 확인 내용 |
-| --- | --- |
-| `App.onJoinPlayer.Add(callback)` | [ScriptApp.d.ts](https://github.com/zep-us/zep-script-sdk/blob/2ecfa48c4cfae1c085830b54627e09ed358e0675/packages/zep-script/src/ScriptApp.d.ts): 접속 이벤트 |
-| `App.onTriggerObject.Add(callback)` | 같은 파일: 맵 편집기 오브젝트의 F 상호작용, 인자 `(player, layerId, x, y, key)` |
-| `player.storage` | [ScriptPlayer.d.ts](https://github.com/zep-us/zep-script-sdk/blob/2ecfa48c4cfae1c085830b54627e09ed358e0675/packages/zep-script/src/ScriptPlayer.d.ts): 스페이스 한정 플레이어 문자열 저장소 |
-| `player.showCenterLabel(text)` | 같은 파일: 플레이어 화면 메시지 |
-
-SDK의 [공식 변환 플러그인](https://github.com/zep-us/zep-script-sdk/blob/2ecfa48c4cfae1c085830b54627e09ed358e0675/packages/babel-plugin-zep-script/index.js)은 타입 정의의 `ScriptApp`을 런타임 `App`으로 변환합니다. 이 프로젝트는 런타임 이름을 직접 사용합니다. `loadData`/`saveData`처럼 해당 SDK에서 확인되지 않는 API는 호출하지 않습니다. ZIP의 최상위 `main.js` 구조는 공식 CLI의 `archive.ts`를 기준으로 했습니다.
-
-공식 문서 웹사이트는 이 환경의 네트워크 정책으로 접근이 차단되어 SDK 원문을 근거로 삼았습니다. 로컬 테스트 15개는 접속 표시, 지급, 좌표·레이어 필터, 연속 중복, 유저 분리, 저장 문자열을 전달한 새 런타임 복원, 퀴즈 확장, 기존 필드 보존, 데이터 오류, 한도와 저장 예외 등을 검증합니다. **모의 재접속 테스트는 ZEP 서버의 영구 저장 자체를 검증하지 않습니다.**
-
-## GitHub 반영
-
-코드, 테스트, README와 ZIP을 함께 커밋하면 됩니다. 이 작업은 로컬 커밋을 준비하며 자동으로 GitHub에 푸시하지 않습니다.
+Node.js 18 이상과 Python 3.9 이상을 사용하며 외부 패키지·DB·API 키는 필요 없습니다. 기존 체크아웃을 사용하세요. 클라우드 작업은 이미 격리되어 있어 별도 worktree는 필요하지 않습니다.
 
 ```sh
-git status
-git log -1 --oneline
-git push origin main
+node --check main.js
+node --test tests/coins.test.js tests/hud.test.js
+python3 build.py
 ```
 
-푸시 거절 시 원격 변경을 먼저 확인하고 통합하세요. `--force`나 작업 파일을 삭제하는 초기화 명령은 사용하지 마세요.
+빌드는 테스트 후 `dist/zep-coins-hud.zepapp.zip`을 생성합니다. ZIP 최상위에는 **main.js와 coin-hud.html**이 포함됩니다. 같은 내용은 재실행해도 변경하지 않고 기존 ZIP이 다르면 덮어쓰지 않습니다. 수정 후에는 새 이름을 지정하세요.
+
+```sh
+python3 build.py --output dist/zep-coins-hud-v2.zepapp.zip
+```
+
+보상·UI 테스트 22개는 번호별 지급, 중복 방지, 저장 호출·예외, 유저 분리, 기존 데이터 보존, 위젯 준비·갱신·제거, 오류 표시, HTML 메시지 검증·숫자 표시를 검증합니다. 모의 테스트이므로 실제 ZEP의 영구 저장과 브라우저 시각 배치를 검증하지는 않습니다. 배포 후 F 상호작용, 다른 계정의 독립 잔액, 재접속, PC·모바일 배치를 확인하세요. `node main.js`는 실행 방법이 아닙니다. App·player·위젯은 ZEP 런타임이 제공합니다.
+
+## 보상 확장
+
+앱 초기화에서 `CoinRewards.register("quiz:intro:q1", 25)`를 한 번 호출하고, 서버의 정답 판정 통과 후 `CoinRewards.grant(player, "quiz:intro:q1")`를 호출하면 저장과 UI 갱신을 공유합니다. 퀴즈 UI와 정답 판정 자체는 아직 구현하지 않았습니다.
+
+지급 상태는 granted, already_claimed, unknown_reward, storage_error, claim_limit, balance_limit입니다. `CoinRewards.balance(player)`는 ok와 coins 또는 storage_error를 반환합니다. 위젯 입력을 정답·지급액으로 신뢰하지 않습니다.
+
+## 공식 근거와 이전 진단
+
+사용자가 제공한 **ZEP Guidebook (KR).pdf**의 10쪽(Normal app), 206~207쪽(번호·값), 249~257쪽(라이프사이클), 273쪽(충돌·상호작용), 373·426쪽(storage·save), 394~395쪽(개인 채팅), 400~402쪽(반응형 위젯), 430~436쪽(위젯 메시지·제거)을 기준으로 구현했습니다. [공식 가이드](https://docs-kr.zep.us/creator/tutor/tutorial/4) 및 [공식 SDK](https://github.com/zep-us/zep-script-sdk)도 참고하세요.
+
+기존 dist/zep-coins.zepapp.zip은 좌표 보상, zep-interaction-probe.zepapp.zip은 상단 진단, zep-interaction-probe-chat.zepapp.zip은 채팅 진단으로 보존했습니다. 현재 앱은 zep-coins-hud.zepapp.zip입니다. 진단 재빌드는 `python3 build.py --entry tools/interaction-probe.js`이며 변경된 기존 ZIP은 다른 --output을 사용하세요. 진단은 storage를 읽고 쓰거나 보상을 지급하지 않습니다. !diag와 !diag-reset은 진단 앱 전용입니다.

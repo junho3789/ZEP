@@ -8,13 +8,16 @@ import zipfile
 ROOT = Path(__file__).resolve().parent
 
 
-def archive(source):
+def archive(source, resources=None):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as output:
-        entry = zipfile.ZipInfo("main.js", date_time=(2026, 1, 1, 0, 0, 0))
-        entry.compress_type = zipfile.ZIP_DEFLATED
-        entry.external_attr = 0o100644 << 16
-        output.writestr(entry, source)
+        files = {"main.js": source}
+        files.update(resources or {})
+        for name, contents in files.items():
+            entry = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            entry.external_attr = 0o100644 << 16
+            output.writestr(entry, contents)
     return buffer.getvalue()
 
 
@@ -28,8 +31,11 @@ def main():
     test_file = "interaction-probe.test.js" if probe else "coins.test.js"
     subprocess.run(["node", "--check", str(source)], check=True)
     subprocess.run(["node", "--test", str(ROOT / "tests" / test_file)], check=True)
-    payload = archive(source.read_bytes())
-    default_name = "zep-interaction-probe-chat.zepapp.zip" if probe else "zep-coins.zepapp.zip"
+    resources = {} if probe else {"coin-hud.html": (ROOT / "coin-hud.html").read_bytes()}
+    if not probe:
+        subprocess.run(["node", "--test", str(ROOT / "tests/hud.test.js")], check=True)
+    payload = archive(source.read_bytes(), resources)
+    default_name = "zep-interaction-probe-chat.zepapp.zip" if probe else "zep-coins-hud.zepapp.zip"
     destination = (args.output or ROOT / "dist" / default_name).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
@@ -39,7 +45,9 @@ def main():
         with destination.open("xb") as output:
             output.write(payload)
     with zipfile.ZipFile(destination) as output:
-        assert output.namelist() == ["main.js"]
+        assert output.namelist() == ["main.js"] + list(resources)
+        for name, contents in resources.items():
+            assert output.read(name) == contents
         assert output.testzip() is None
         assert output.read("main.js") == source.read_bytes()
     print(f"Verified ZEP upload ZIP: {destination}")
