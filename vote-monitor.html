@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root { color-scheme: light; font-family: system-ui, -apple-system, 'Malgun Gothic', sans-serif;
+  color: #27262e; background: transparent; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid #b8a8fc; outline-offset: 3px; }
+.overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 20px;
+  background: #19162366; }
+.dialog { width: min(100%, 520px); max-height: 100%; overflow-y: auto; background: white;
+  border: 1px solid #eeedf2; border-radius: 18px; box-shadow: 0 18px 70px #18132a38; }
+header { display: flex; align-items: center; gap: 12px; padding: 24px 24px 20px; }
+.icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px;
+  background: #f0ebff; color: #7952e8; flex-shrink: 0; }
+h1 { margin: 0; font-size: 20px; letter-spacing: -.5px; }
+.subtitle { margin: 4px 0 0; font-size: 12px; color: #83818f; }
+.close { margin-left: auto; border: 0; border-radius: 8px; background: transparent;
+  color: #777584; font-size: 24px; width: 36px; height: 36px; }
+.close:hover { background: #f5f4f8; }
+main { padding: 0 24px 24px; }
+.summary { padding: 20px; border-radius: 12px; background: #f7f5fc; }
+.eyebrow { margin: 0 0 8px; color: #777182; font-size: 13px; }
+.total { font-weight: 750; font-size: 32px; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.unit { color: #777182; font-size: 14px; font-weight: 500; margin-left: 5px; }
+.meta { margin-top: 8px; font-size: 12px; color: #898293; }
+.boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.box { padding: 18px; border: 1px solid #eae7f0; border-radius: 12px; min-width: 0; }
+.box-title { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-size: 14px; font-weight: 650; }
+.badge { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px;
+  background: #eee9ff; color: #7952e8; }
+.box-b .badge { background: #e9f0ff; color: #557ada; }
+.amount { font-size: 24px; font-weight: 700; letter-spacing: -.5px; overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums; }
+.box .unit { font-size: 12px; }
+.details { display: flex; justify-content: space-between; margin-top: 12px; font-size: 12px; color: #827c8d; }
+.track { height: 6px; border-radius: 10px; background: #f0edf5; overflow: hidden; margin-top: 10px; }
+.fill { width: 0; height: 100%; background: #8c69ee; border-radius: inherit; transition: width .25s; }
+.box-b .fill { background: #6f91e9; }
+#status { margin: 16px 0 0; min-height: 18px; font-size: 12px; color: #898293; }
+#status.error { color: #d04c63; }
+footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 24px;
+  border-top: 1px solid #efedf3; background: #fcfbfe; }
+.button { border-radius: 9px; padding: 10px 18px; font-size: 13px; font-weight: 650; }
+.secondary { background: white; color: #696172; border: 1px solid #e4dfea; }
+.primary { background: #7952e8; color: white; border: 1px solid #7952e8; }
+.primary:hover { background: #6941d4; }
+.primary:disabled { opacity: .5; cursor: wait; }
+@media(max-width: 420px) { .overlay { padding: 12px; } header { padding: 18px; }
+  main { padding: 0 18px 18px; } .box { padding: 12px; } .amount { font-size: 21px; }
+  footer { padding: 14px 18px; } }
+@media(max-width: 320px) { .boxes { grid-template-columns: 1fr; } }
+@media(prefers-reduced-motion: reduce) { .fill { transition: none; } }
+</style>
+</head>
+<body>
+<div class="overlay">
+<section class="dialog" role="dialog" aria-modal="true" aria-labelledby="title">
+  <header>
+    <div class="icon" aria-hidden="true"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20h16M6 16v-4M12 16V5M18 16V9"/></svg></div>
+    <div><h1 id="title">투표 현황</h1><p class="subtitle">두 투표함에 모인 코인을 확인하세요</p></div>
+    <button id="close" class="close" aria-label="팝업 닫기">×</button>
+  </header>
+  <main>
+    <section class="summary"><p class="eyebrow">총 모인 코인</p>
+      <div><span id="total" class="total">—</span><span class="unit">코인</span></div>
+      <div class="meta">투표함 2개 · 총 <span id="votes">—</span>표 · 1표 = 10코인</div>
+    </section>
+    <div class="boxes">
+      <section class="box"><h2 class="box-title"><span class="badge">A</span>투표함 A</h2>
+        <div><span id="a-coins" class="amount">—</span><span class="unit">코인</span></div>
+        <div class="details"><span><span id="a-votes">—</span>표</span><span id="a-share">—</span></div>
+        <div class="track"><div id="a-bar" class="fill"></div></div>
+      </section>
+      <section class="box box-b"><h2 class="box-title"><span class="badge">B</span>투표함 B</h2>
+        <div><span id="b-coins" class="amount">—</span><span class="unit">코인</span></div>
+        <div class="details"><span><span id="b-votes">—</span>표</span><span id="b-share">—</span></div>
+        <div class="track"><div id="b-bar" class="fill"></div></div>
+      </section>
+    </div>
+    <p id="status" role="status" aria-live="polite">집계를 불러오는 중…</p>
+  </main>
+  <footer><button id="dismiss" class="button secondary">닫기</button><button id="refresh" class="button primary" disabled>새로고침</button></footer>
+</section>
+</div>
+<script>
+(function () {
+  function el(id) { return document.getElementById(id); }
+  function send(type) { window.parent.postMessage({type: type}, "*"); }
+  function format(number) { return String(number).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+  function valid(number) { return typeof number === "number" && isFinite(number) &&
+    number >= 0 && Math.floor(number) === number && number <= 9007199254740991; }
+  function clear() {
+    ["total", "votes", "a-coins", "a-votes", "b-coins", "b-votes", "a-share", "b-share"].forEach(function (id) { el(id).textContent = "—"; });
+    el("a-bar").style.width = "0%"; el("b-bar").style.width = "0%";
+  }
+  function close() { send("vote_monitor_close"); }
+  el("close").addEventListener("click", close);
+  el("dismiss").addEventListener("click", close);
+  el("refresh").addEventListener("click", function () {
+    if (el("refresh").disabled) return;
+    el("refresh").disabled = true;
+    el("status").textContent = "집계를 불러오는 중…";
+    send("vote_monitor_refresh");
+  });
+  document.addEventListener("keydown", function (event) { if (event.key === "Escape") close(); });
+  window.addEventListener("message", function (event) {
+    if (event.source !== window.parent) return;
+    var data = event.data;
+    if (!data || data.type !== "vote_totals") return;
+    el("refresh").disabled = data.status === "loading";
+    if (data.status === "loading") {
+      el("status").className = "";
+      el("status").textContent = "집계를 불러오는 중… 이전 숫자는 마지막 조회 결과입니다.";
+      return;
+    }
+    var a = data.boxes && data.boxes.A, b = data.boxes && data.boxes.B;
+    if (data.status !== "ok" || data.boxCount !== 2 || !a || !b ||
+        !valid(a.coins) || !valid(a.votes) || !valid(b.coins) || !valid(b.votes) ||
+        !valid(data.totalCoins) || !valid(data.totalVotes) ||
+        a.coins !== a.votes * 10 || b.coins !== b.votes * 10 ||
+        data.totalCoins !== a.coins + b.coins || data.totalVotes !== a.votes + b.votes) {
+      clear(); el("status").className = "error";
+      el("status").textContent = "집계를 불러오지 못했습니다. 새로고침해 주세요.";
+      return;
+    }
+    el("status").className = "";
+    el("total").textContent = format(data.totalCoins); el("votes").textContent = format(data.totalVotes);
+    ["a", "b"].forEach(function (name) {
+      var box = name === "a" ? a : b;
+      var share = data.totalCoins ? box.coins / data.totalCoins * 100 : 0;
+      el(name + "-coins").textContent = format(box.coins);
+      el(name + "-votes").textContent = format(box.votes);
+      el(name + "-share").textContent = share.toFixed(1) + "%";
+      el(name + "-bar").style.width = share + "%";
+    });
+    el("status").textContent = "현재 조회 결과입니다. 새로고침하면 최신 집계를 가져옵니다.";
+  });
+  el("close").focus();
+  send("vote_monitor_ready");
+}());
+</script>
+</body>
+</html>

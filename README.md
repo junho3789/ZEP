@@ -4,13 +4,13 @@
 
 ## ZEP 적용 방법
 
-1. GitHub의 `dist/zep-voting-coins.zepapp.zip`을 다운로드합니다. 기존 ZIP과 진단 ZIP은 이전 산출물로 보존했습니다.
+1. GitHub의 `dist/zep-voting-popup.zepapp.zip`을 다운로드합니다. 기존 ZIP과 진단 ZIP은 이전 산출물로 보존했습니다.
 2. ZEP **나의 앱**에서 기존 앱을 새 ZIP으로 업데이트합니다. 압축을 풀지 마세요. 맵 접속 시 자동 실행하려면 **Normal app** 유형으로 대상 맵의 설정에 적용합니다. UI 메뉴는 현재 ZEP 버전에 따라 다를 수 있습니다.
 3. 맵 편집기에서 오브젝트 유형을 **ZEP Script 상호작용**으로 설정합니다.
 4. 아래 투표 설정표대로 **투표함 두 개와 모니터 한 개**를 배치합니다. 각 오브젝트는 실행 범위 `1`, 실행 방법 `F키를 눌러 실행`으로 설정하고 저장합니다. 좌표와 레이어는 코드에 입력하지 않습니다.
 5. 재접속해 최초 보너스 100코인과 좌상단 카드를 확인합니다. 기존 잔액이 있는 유저는 기존 잔액에 100코인이 더해집니다. 재접속해도 보너스는 반복 지급하지 않습니다.
 6. 투표함 A에서 F를 누르고 확인창을 승인합니다. 내 코인이 10 감소하고 A에 10 적립됩니다. 투표 보상으로 별도 10코인을 지급하지 않습니다.
-7. 모니터에서 F를 눌러 개인 채팅의 A·B 코인과 표 수, 합계를 확인합니다. 같은 계정으로 재접속하고 다른 계정으로도 투표하여 잔액과 공용 집계가 유지되는지 검증하세요.
+7. 모니터에서 F를 눌러 팝업의 A·B 코인과 표 수, 합계를 확인합니다. 같은 계정으로 재접속하고 다른 계정으로도 투표하여 잔액과 공용 집계가 유지되는지 검증하세요.
 
 ## 코인 UI
 
@@ -30,7 +30,13 @@
 
 투표는 **잔액이 허용하는 만큼 반복 가능**합니다. 100코인이 있으면 10회 투표할 수 있습니다. A와 B에 나누어 투표할 수도 있습니다. 매 투표마다 확인창을 띄우며 취소하면 차감하지 않습니다. 같은 유저에게 이미 확인창이 열려 있으면 추가 이벤트로 새 확인창을 열지 않습니다. 이 기능은 코인 배분 투표이며 한 사람 한 표를 제한하는 선거 기능은 아닙니다.
 
-모니터는 상호작용 시점의 집계를 개인 채팅에 표시합니다. 10코인이 1표이므로 예를 들어 A=30코인은 3표입니다. `!votes`로도 확인할 수 있습니다. 모니터를 반복 클릭해도 코인은 이동하지 않습니다.
+모니터는 상호작용 시 **개인 팝업**을 엽니다. 밝은 배경, 둥근 카드, 보라색 버튼으로 ZEP 기본 UI와 어울리도록 만든 커스텀 HTML 디자인입니다. ZEP의 내장 팝업 컴포넌트 자체를 사용하는 것은 아닙니다.
+
+팝업은 총 코인·총 표 수, 투표함 A·B의 코인·표 수, 비율과 막대를 표시합니다. 10코인은 1표입니다. 조회 전에는 숫자 대신 —, 조회 실패 시에는 오류 안내를 표시하고 새로고침을 허용합니다. 총액이 0이면 비율은 0%입니다.
+
+`새로고침`으로 최신 집계를 조회합니다. 실시간 자동 갱신은 아니며 버튼 안내에 조회 상태를 표시합니다. 닫기 버튼, 우측 상단 ×, 팝업에 키보드 포커스가 있을 때 Escape로 닫습니다. `!votes`도 같은 팝업을 엽니다. 반복 클릭은 기존 팝업을 갱신하며 코인은 이동하지 않습니다. 종료된 팝업에 늦은 응답을 전달하지 않고, 퇴장 시 팝업을 제거합니다.
+
+`player.showWidgetResponsive("vote-monitor.html", 0, 0, 0, 0)`로 전체 화면에 반투명 배경을 표시하고 가운데 카드를 배치합니다. 모바일과 작은 화면에서는 카드 너비와 스크롤을 조정합니다. 좌상단 잔액 위젯은 별도 유지하며 팝업이 열려 있는 동안에는 배경 위로 팝업이 표시됩니다.
 
 가이드 207쪽에 따라 `App.onObjectTouched`에서 type=21, 번호=obj.text, 값=obj.param1을 읽습니다. 이 이벤트는 충돌 또는 상호작용에 반응하므로 F/바로 실행은 맵 편집기 설정을 따릅니다. 스크립트가 별도로 F 키만 허용하지는 않습니다.
 
@@ -61,17 +67,17 @@ Node.js 18 이상과 Python 3.9 이상을 사용하며 외부 패키지·DB·API
 
 ```sh
 node --check main.js
-node --test tests/coins.test.js tests/voting.test.js tests/hud.test.js
+node --test tests/coins.test.js tests/voting.test.js tests/hud.test.js tests/monitor.test.js
 python3 build.py
 ```
 
-빌드는 테스트 후 `dist/zep-voting-coins.zepapp.zip`을 생성합니다. ZIP 최상위에는 **main.js와 coin-hud.html**이 포함됩니다. 같은 내용은 재실행해도 변경하지 않고 기존 ZIP이 다르면 덮어쓰지 않습니다. 수정 후에는 새 이름을 지정하세요.
+빌드는 테스트 후 `dist/zep-voting-popup.zepapp.zip`을 생성합니다. ZIP 최상위에는 **main.js, coin-hud.html, vote-monitor.html**이 포함됩니다. 같은 내용은 재실행해도 변경하지 않고 기존 ZIP이 다르면 덮어쓰지 않습니다. 수정 후에는 새 이름을 지정하세요.
 
 ```sh
-python3 build.py --output dist/zep-voting-coins-v2.zepapp.zip
+python3 build.py --output dist/zep-voting-popup-v2.zepapp.zip
 ```
 
-보상·투표·UI 테스트 37개는 최초 보너스, 번호별 보상, 반복 투표, 잔액 부족·확인창 취소, 두 유저의 순차 집계, 저장 실패·불확실한 저장 후 복구, 집계 조회, 기존 데이터 보존과 UI 갱신을 검증합니다. 모의 테스트이므로 실제 ZEP의 영구 저장과 브라우저 시각 배치를 검증하지는 않습니다. 배포 후 F 상호작용, 다른 계정의 독립 잔액, 재접속, PC·모바일 배치를 확인하세요. `node main.js`는 실행 방법이 아닙니다. App·player·위젯은 ZEP 런타임이 제공합니다.
+보상·투표·UI 테스트 41개는 최초 보너스, 번호별 보상, 반복 투표, 잔액 부족·확인창 취소, 두 유저의 순차 집계, 저장 실패·불확실한 저장 후 복구, 집계 조회·새로고침·종료, 늦은 응답 처리, 숫자·비율·오류 표시, 기존 데이터 보존과 UI 갱신을 검증합니다. 별도 로컬 Chromium 브라우저에서 PC 1280×800, 모바일 390×700의 팝업 배치·가로 넘침 없음·새로고침·닫기 메시지를 확인했습니다. 모의 ZEP 부모 창을 사용했으므로 실제 ZEP 위젯 호환성과 서버 영구 저장을 검증한 것은 아닙니다. 배포 후 F 상호작용, 다른 계정의 독립 잔액, 재접속, PC·모바일 배치를 확인하세요. `node main.js`는 실행 방법이 아닙니다. App·player·위젯은 ZEP 런타임이 제공합니다.
 
 ## 보상 확장
 
@@ -83,4 +89,4 @@ python3 build.py --output dist/zep-voting-coins-v2.zepapp.zip
 
 사용자가 제공한 **ZEP Guidebook (KR).pdf**의 10쪽(Normal app), 206~207쪽(번호·값), 249~257쪽(라이프사이클), 273쪽(충돌·상호작용), 373·426쪽(storage·save), 394~395쪽(개인 채팅), 400~402쪽(반응형 위젯), 430~436쪽(위젯 메시지·제거)을 기준으로 구현했습니다. [공식 가이드](https://docs-kr.zep.us/creator/tutor/tutorial/4) 및 [공식 SDK](https://github.com/zep-us/zep-script-sdk)도 참고하세요.
 
-기존 dist/zep-coins.zepapp.zip은 좌표 보상, zep-interaction-probe.zepapp.zip은 상단 진단, zep-interaction-probe-chat.zepapp.zip은 채팅 진단으로 보존했습니다. 기존 zep-coins-hud.zepapp.zip도 보존합니다. 현재 앱은 zep-voting-coins.zepapp.zip입니다. 진단 재빌드는 `python3 build.py --entry tools/interaction-probe.js`이며 변경된 기존 ZIP은 다른 --output을 사용하세요. 진단은 storage를 읽고 쓰거나 보상을 지급하지 않습니다. !diag와 !diag-reset은 진단 앱 전용입니다.
+기존 dist/zep-coins.zepapp.zip은 좌표 보상, zep-interaction-probe.zepapp.zip은 상단 진단, zep-interaction-probe-chat.zepapp.zip은 채팅 진단으로 보존했습니다. 기존 zep-coins-hud.zepapp.zip도 보존합니다. 기존 zep-voting-coins.zepapp.zip도 보존합니다. 현재 앱은 zep-voting-popup.zepapp.zip입니다. 진단 재빌드는 `python3 build.py --entry tools/interaction-probe.js`이며 변경된 기존 ZIP은 다른 --output을 사용하세요. 진단은 storage를 읽고 쓰거나 보상을 지급하지 않습니다. !diag와 !diag-reset은 진단 앱 전용입니다.

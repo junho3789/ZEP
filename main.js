@@ -6,6 +6,7 @@ var CoinRewards = (function () {
     var MAX_CLAIMS = 1000;
     var rewards = Object.create(null);
     var huds = [];
+    var monitors = [];
     var voteQueue = [];
     var voteBusy = false;
     var votePrompts = [];
@@ -284,19 +285,57 @@ var CoinRewards = (function () {
         }
     }
 
-    function showTotals(player) {
+    function closeMonitor(monitor) {
+        monitor.active = false;
+        try { monitor.widget.destroy(); } catch (error) {}
+        for (var i = monitors.length - 1; i >= 0; i--) {
+            if (monitors[i] === monitor) monitors.splice(i, 1);
+        }
+    }
+
+    function loadMonitor(monitor) {
+        if (!monitor.active || !monitor.ready || monitor.busy) return;
+        monitor.busy = true;
+        try { monitor.widget.sendMessage({ type: "vote_totals", status: "loading" }); }
+        catch (error) { closeMonitor(monitor); return; }
         enqueueVote(function (appData) {
-            if (!appData) {
-                player.sendMessage("투표 집계를 읽을 수 없습니다. 관리자에게 문의하세요.");
-                return;
+            monitor.busy = false;
+            if (!monitor.active) return;
+            var payload = { type: "vote_totals", status: "storage_error" };
+            if (appData) {
+                var a = appData.totals.boxes.A;
+                var b = appData.totals.boxes.B;
+                payload = { type: "vote_totals", status: "ok", boxCount: 2,
+                    boxes: { A: { coins: a.coins, votes: a.votes },
+                        B: { coins: b.coins, votes: b.votes } },
+                    totalCoins: a.coins + b.coins, totalVotes: a.votes + b.votes };
             }
-            var a = appData.totals.boxes.A;
-            var b = appData.totals.boxes.B;
-            player.sendMessage("투표 현황 | 투표함 수: 2개");
-            player.sendMessage("투표함 A: " + a.coins + "코인 / " + a.votes + "표");
-            player.sendMessage("투표함 B: " + b.coins + "코인 / " + b.votes + "표");
-            player.sendMessage("합계: " + (a.coins + b.coins) + "코인 / " + (a.votes + b.votes) + "표");
+            try { monitor.widget.sendMessage(payload); }
+            catch (error) { closeMonitor(monitor); }
         });
+    }
+
+    function showTotals(player) {
+        for (var i = 0; i < monitors.length; i++) {
+            if (monitors[i].player === player) { loadMonitor(monitors[i]); return; }
+        }
+        try {
+            var widget = player.showWidgetResponsive("vote-monitor.html", 0, 0, 0, 0);
+            var monitor = { player: player, widget: widget, ready: false, active: true, busy: false };
+            monitors.push(monitor);
+            widget.onMessage.Add(function (sender, data) {
+                if (sender !== player || !monitor.active || !data) return;
+                if (data.type === "vote_monitor_close") { closeMonitor(monitor); return; }
+                if (data.type === "vote_monitor_ready") {
+                    monitor.ready = true;
+                    loadMonitor(monitor);
+                } else if (data.type === "vote_monitor_refresh") {
+                    loadMonitor(monitor);
+                }
+            });
+        } catch (error) {
+            player.sendMessage("집계 팝업을 열지 못했습니다. 잠시 후 모니터를 다시 실행하세요.");
+        }
     }
 
     function refreshHud(player) {
@@ -345,6 +384,9 @@ var CoinRewards = (function () {
     });
     App.onLeavePlayer.Add(function (player) {
         removeHud(player);
+        for (var m = monitors.length - 1; m >= 0; m--) {
+            if (monitors[m].player === player) closeMonitor(monitors[m]);
+        }
         for (var i = votePrompts.length - 1; i >= 0; i--) {
             if (votePrompts[i] === player) votePrompts.splice(i, 1);
         }

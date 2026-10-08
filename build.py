@@ -31,12 +31,12 @@ def main():
     test_file = "interaction-probe.test.js" if probe else "coins.test.js"
     subprocess.run(["node", "--check", str(source)], check=True)
     subprocess.run(["node", "--test", str(ROOT / "tests" / test_file)], check=True)
-    resources = {} if probe else {"coin-hud.html": (ROOT / "coin-hud.html").read_bytes()}
+    resources = {} if probe else {name: (ROOT / name).read_bytes() for name in ["coin-hud.html", "vote-monitor.html"]}
     if not probe:
         subprocess.run(["node", "--test", str(ROOT / "tests/voting.test.js")], check=True)
-        subprocess.run(["node", "--test", str(ROOT / "tests/hud.test.js")], check=True)
+        subprocess.run(["node", "--test", str(ROOT / "tests/hud.test.js"), str(ROOT / "tests/monitor.test.js")], check=True)
     payload = archive(source.read_bytes(), resources)
-    default_name = "zep-interaction-probe-chat.zepapp.zip" if probe else "zep-voting-coins.zepapp.zip"
+    default_name = "zep-interaction-probe-chat.zepapp.zip" if probe else "zep-voting-popup.zepapp.zip"
     destination = (args.output or ROOT / "dist" / default_name).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():

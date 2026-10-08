@@ -30,8 +30,8 @@ function player(id, storage = '') {
     return {id, storage, messages: [], saves: 0, widgets: [], prompts: [],
         save() { this.saves++; }, sendMessage(text) { this.messages.push(text); },
         showConfirm(text, fn) { this.prompts.push({text, fn}); },
-        showWidgetResponsive() {
-            const w = {messages: [], onMessage: {Add(fn) {w.ready = fn;}},
+        showWidgetResponsive(file) {
+            const w = {file, messages: [], onMessage: {Add(fn) {w.ready = fn;}},
                 sendMessage(data) {w.messages.push(data);}, destroy() {}};
             this.widgets.push(w); return w;
         }};
@@ -113,11 +113,16 @@ test('monitor reports both box totals, coin sum, vote counts and two boxes', () 
     const f = fixture(), p = joined(f);
     vote(f, p, 'A'); vote(f, p, 'A'); vote(f, p, 'B');
     touch(f, p, 103, 'votes:totals');
-    const messages = p.messages.slice(-4).join('\n');
-    assert.match(messages, /투표함 수: 2개/);
-    assert.match(messages, /A: 20코인 \/ 2표/);
-    assert.match(messages, /B: 10코인 \/ 1표/);
-    assert.match(messages, /합계: 30코인 \/ 3표/);
+    const w = p.widgets.at(-1);
+    assert.equal(w.file, 'vote-monitor.html');
+    w.ready(p, {type: 'vote_monitor_ready'});
+    const data = w.messages.at(-1);
+    assert.equal(data.boxCount, 2);
+    assert.equal(data.boxes.A.coins, 20);
+    assert.equal(data.boxes.A.votes, 2);
+    assert.equal(data.boxes.B.coins, 10);
+    assert.equal(data.totalCoins, 30);
+    assert.equal(data.totalVotes, 3);
 });
 test('failed app write leaves one pending debit and retry completes without double spending', () => {
     const f = fixture(), p = joined(f);
@@ -191,4 +196,50 @@ test('missing app transaction history blocks replay of old player sequence', () 
     f.writeFailure = null; f.api.resumeVote(p);
     assert.equal(state(p).pendingVote.seq, 2);
     assert.equal(f.writes, 0);
+});
+
+test('monitor refresh gets latest totals and duplicate opens reuse the same widget', () => {
+    const f = fixture(), p = joined(f);
+    f.api.showTotals(p);
+    const w = p.widgets.at(-1);
+    w.ready(p, {type: 'vote_monitor_ready'});
+    assert.equal(w.messages.at(-1).totalCoins, 0);
+    vote(f, p, 'A');
+    w.ready(p, {type: 'vote_monitor_refresh'});
+    assert.equal(w.messages.at(-1).totalCoins, 10);
+    const count = p.widgets.length;
+    f.api.showTotals(p);
+    assert.equal(p.widgets.length, count);
+    assert.equal(w.messages.at(-1).totalCoins, 10);
+    const messages = w.messages.length;
+    w.ready(player('other'), {type:'vote_monitor_refresh'});
+    w.ready(p, {type:'give_coins', amount:1000});
+    assert.equal(w.messages.length, messages);
+});
+test('closed monitor ignores delayed responses and leave destroys popup', () => {
+    const f = fixture(), p = joined(f);
+    f.api.showTotals(p);
+    const w = p.widgets.at(-1);
+    let destroyed = false; w.destroy = () => { destroyed = true; };
+    f.defer = true;
+    w.ready(p, {type:'vote_monitor_ready'});
+    assert.equal(w.messages.at(-1).status, 'loading');
+    w.ready(p, {type:'vote_monitor_close'});
+    const count = w.messages.length;
+    f.reads.shift()();
+    assert.equal(w.messages.length, count);
+    assert.equal(destroyed, true);
+    f.api.showTotals(p);
+    const reopened = p.widgets.at(-1);
+    let cleaned = false; reopened.destroy = () => { cleaned = true; };
+    f.handlers.onLeavePlayer(p);
+    assert.equal(cleaned, true);
+});
+test('corrupt totals return popup error rather than fabricated zeros', () => {
+    const f = fixture('{broken'), p = joined(f);
+    f.api.showTotals(p);
+    const w = p.widgets.at(-1);
+    w.ready(p, {type:'vote_monitor_ready'});
+    assert.equal(w.messages.at(-1).status, 'storage_error');
+    assert.equal(w.messages.at(-1).totalCoins, undefined);
 });
