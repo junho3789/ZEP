@@ -20,12 +20,17 @@ def archive(source):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "dist/zep-coins.zepapp.zip")
+    parser.add_argument("--entry", choices=["main.js", "tools/interaction-probe.js"], default="main.js")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    subprocess.run(["node", "--check", str(ROOT / "main.js")], check=True)
-    subprocess.run(["node", "--test", str(ROOT / "tests/coins.test.js")], check=True)
-    payload = archive((ROOT / "main.js").read_bytes())
-    destination = args.output.resolve()
+    source = ROOT / args.entry
+    probe = args.entry == "tools/interaction-probe.js"
+    test_file = "interaction-probe.test.js" if probe else "coins.test.js"
+    subprocess.run(["node", "--check", str(source)], check=True)
+    subprocess.run(["node", "--test", str(ROOT / "tests" / test_file)], check=True)
+    payload = archive(source.read_bytes())
+    default_name = "zep-interaction-probe-chat.zepapp.zip" if probe else "zep-coins.zepapp.zip"
+    destination = (args.output or ROOT / "dist" / default_name).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         if destination.read_bytes() != payload:
@@ -36,7 +41,7 @@ def main():
     with zipfile.ZipFile(destination) as output:
         assert output.namelist() == ["main.js"]
         assert output.testzip() is None
-        assert output.read("main.js") == (ROOT / "main.js").read_bytes()
+        assert output.read("main.js") == source.read_bytes()
     print(f"Verified ZEP upload ZIP: {destination}")
 
 
