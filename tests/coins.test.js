@@ -28,13 +28,14 @@ function player(storage = '') {
 }
 function state(p) { return JSON.parse(p.storage).zepCoinRewards; }
 
-test('join shows balance without modifying storage', () => {
+test('first join grants and saves 100 coins', () => {
     const r = runtime(), p = player();
     r.handlers.onJoinPlayer(p);
     const w = p.widgets[0];
     w.ready(p, {type: 'coin_hud_ready'});
-    assert.equal(w.messages[0].coins, 0);
-    assert.equal(p.storage, '');
+    assert.equal(w.messages[0].coins, 100);
+    assert.equal(p.saves, 1);
+    assert.equal(state(p).claimed['reward:welcome:v1'], true);
 });
 test('F interaction credits configured object and saves duplicate guard together', () => {
     const r = runtime(), p = player();
@@ -69,9 +70,9 @@ test('new runtime and player restore stored balance and duplicate protection', (
     const b = player(a.storage), r = runtime();
     r.handlers.onJoinPlayer(b);
     b.widgets[0].ready(b, {type: 'coin_hud_ready'});
-    assert.equal(b.widgets[0].messages[0].coins, 10);
+    assert.equal(b.widgets[0].messages[0].coins, 110);
     assert.equal(r.api.grant(b, ID).status, 'already_claimed');
-    assert.equal(state(b).coins, 10);
+    assert.equal(state(b).coins, 110);
 });
 test('new reward source uses same balance and independent claim id', () => {
     const r = runtime(), p = player();
@@ -154,16 +155,16 @@ test('ready handshake restores latest balance; grants refresh HUD including quiz
     assert.equal(w.messages.length, 0);
     r.api.grant(p, ID);
     w.ready(p, {type: 'coin_hud_ready'});
-    assert.equal(w.messages.at(-1).coins, 10);
+    assert.equal(w.messages.at(-1).coins, 110);
     r.api.register('quiz:q1', 25);
     r.api.grant(p, 'quiz:q1');
-    assert.equal(w.messages.at(-1).coins, 35);
-    assert.equal(p.saves, 2);
+    assert.equal(w.messages.at(-1).coins, 135);
+    assert.equal(p.saves, 3);
     const count = w.messages.length;
     w.ready(p, {type: 'grant', amount: 1000});
     w.ready(player(), {type: 'coin_hud_ready'});
     assert.equal(w.messages.length, count);
-    assert.equal(state(p).coins, 35);
+    assert.equal(state(p).coins, 135);
 });
 test('HUD is cleaned up on rejoin and leave', () => {
     const r = runtime(), p = player();
@@ -178,13 +179,14 @@ test('save failures roll back memory and do not update HUD or block retry', () =
     const r = runtime(), p = player();
     r.handlers.onJoinPlayer(p);
     p.widgets[0].ready(p, {type: 'coin_hud_ready'});
+    const before = p.storage;
     p.save = () => { throw Error('Save failed'); };
     assert.equal(r.api.grant(p, ID).status, 'storage_error');
-    assert.equal(p.storage, '');
-    assert.equal(p.widgets[0].messages.at(-1).coins, 0);
+    assert.equal(p.storage, before);
+    assert.equal(p.widgets[0].messages.at(-1).coins, 100);
     p.save = () => {};
     assert.equal(r.api.grant(p, ID).status, 'granted');
-    assert.equal(p.widgets[0].messages.at(-1).coins, 10);
+    assert.equal(p.widgets[0].messages.at(-1).coins, 110);
 });
 test('HUD errors do not undo saved rewards', () => {
     const r = runtime(), p = player();
@@ -192,8 +194,8 @@ test('HUD errors do not undo saved rewards', () => {
     p.widgets[0].ready(p, {type: 'coin_hud_ready'});
     p.widgets[0].sendMessage = () => { throw Error('Closed widget'); };
     assert.equal(r.api.grant(p, ID).status, 'granted');
-    assert.equal(p.saves, 1);
-    assert.equal(state(p).coins, 10);
+    assert.equal(p.saves, 2);
+    assert.equal(state(p).coins, 110);
 });
 test('invalid storage displays error rather than zero; chat fallback works', () => {
     const r = runtime(), p = player('{broken');

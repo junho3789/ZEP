@@ -33,9 +33,10 @@ def main():
     subprocess.run(["node", "--test", str(ROOT / "tests" / test_file)], check=True)
     resources = {} if probe else {"coin-hud.html": (ROOT / "coin-hud.html").read_bytes()}
     if not probe:
+        subprocess.run(["node", "--test", str(ROOT / "tests/voting.test.js")], check=True)
         subprocess.run(["node", "--test", str(ROOT / "tests/hud.test.js")], check=True)
     payload = archive(source.read_bytes(), resources)
-    default_name = "zep-interaction-probe-chat.zepapp.zip" if probe else "zep-coins-hud.zepapp.zip"
+    default_name = "zep-interaction-probe-chat.zepapp.zip" if probe else "zep-voting-coins.zepapp.zip"
     destination = (args.output or ROOT / "dist" / default_name).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
