@@ -36,7 +36,7 @@ def main():
         subprocess.run(["node", "--test", str(ROOT / "tests/voting.test.js")], check=True)
         subprocess.run(["node", "--test", str(ROOT / "tests/hud.test.js"), str(ROOT / "tests/monitor.test.js")], check=True)
     payload = archive(source.read_bytes(), resources)
-    default_name = "zep-interaction-probe-chat.zepapp.zip" if probe else "zep-voting-popup.zepapp.zip"
+    default_name = "zep-interaction-probe-chat.zepapp.zip" if probe else "zep-voting-popup-v1.1.1.zepapp.zip"
     destination = (args.output or ROOT / "dist" / default_name).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():

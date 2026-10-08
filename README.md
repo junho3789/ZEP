@@ -4,7 +4,7 @@
 
 ## ZEP 적용 방법
 
-1. GitHub의 `dist/zep-voting-popup.zepapp.zip`을 다운로드합니다. 기존 ZIP과 진단 ZIP은 이전 산출물로 보존했습니다.
+1. GitHub의 `dist/zep-voting-popup-v1.1.1.zepapp.zip`을 다운로드합니다. 기존 ZIP과 진단 ZIP은 이전 산출물로 보존했습니다.
 2. ZEP **나의 앱**에서 기존 앱을 새 ZIP으로 업데이트합니다. 압축을 풀지 마세요. 맵 접속 시 자동 실행하려면 **Normal app** 유형으로 대상 맵의 설정에 적용합니다. UI 메뉴는 현재 ZEP 버전에 따라 다를 수 있습니다.
 3. 맵 편집기에서 오브젝트 유형을 **ZEP Script 상호작용**으로 설정합니다.
 4. 아래 투표 설정표대로 **투표함 두 개와 모니터 한 개**를 배치합니다. 각 오브젝트는 실행 범위 `1`, 실행 방법 `F키를 눌러 실행`으로 설정하고 저장합니다. 좌표와 레이어는 코드에 입력하지 않습니다.
@@ -71,7 +71,7 @@ node --test tests/coins.test.js tests/voting.test.js tests/hud.test.js tests/mon
 python3 build.py
 ```
 
-빌드는 테스트 후 `dist/zep-voting-popup.zepapp.zip`을 생성합니다. ZIP 최상위에는 **main.js, coin-hud.html, vote-monitor.html**이 포함됩니다. 같은 내용은 재실행해도 변경하지 않고 기존 ZIP이 다르면 덮어쓰지 않습니다. 수정 후에는 새 이름을 지정하세요.
+빌드는 테스트 후 `dist/zep-voting-popup-v1.1.1.zepapp.zip`을 생성합니다. ZIP 최상위에는 **main.js, coin-hud.html, vote-monitor.html**이 포함됩니다. 같은 내용은 재실행해도 변경하지 않고 기존 ZIP이 다르면 덮어쓰지 않습니다. 수정 후에는 새 이름을 지정하세요.
 
 ```sh
 python3 build.py --output dist/zep-voting-popup-v2.zepapp.zip
@@ -90,3 +90,16 @@ python3 build.py --output dist/zep-voting-popup-v2.zepapp.zip
 사용자가 제공한 **ZEP Guidebook (KR).pdf**의 10쪽(Normal app), 206~207쪽(번호·값), 249~257쪽(라이프사이클), 273쪽(충돌·상호작용), 373·426쪽(storage·save), 394~395쪽(개인 채팅), 400~402쪽(반응형 위젯), 430~436쪽(위젯 메시지·제거)을 기준으로 구현했습니다. [공식 가이드](https://docs-kr.zep.us/creator/tutor/tutorial/4) 및 [공식 SDK](https://github.com/zep-us/zep-script-sdk)도 참고하세요.
 
 기존 dist/zep-coins.zepapp.zip은 좌표 보상, zep-interaction-probe.zepapp.zip은 상단 진단, zep-interaction-probe-chat.zepapp.zip은 채팅 진단으로 보존했습니다. 기존 zep-coins-hud.zepapp.zip도 보존합니다. 기존 zep-voting-coins.zepapp.zip도 보존합니다. 현재 앱은 zep-voting-popup.zepapp.zip입니다. 진단 재빌드는 `python3 build.py --entry tools/interaction-probe.js`이며 변경된 기존 ZIP은 다른 --output을 사용하세요. 진단은 storage를 읽고 쓰거나 보상을 지급하지 않습니다. !diag와 !diag-reset은 진단 앱 전용입니다.
+
+
+## 집계가 여전히 채팅으로 나올 때
+
+최신 실행 버전은 **1.1.1-popup**입니다. 접속 시 `[코인 투표 앱 1.1.1-popup] 팝업 집계 버전 실행 중`을 개인 채팅에 표시합니다. `!version`으로도 확인할 수 있습니다. 채팅에 숫자 집계를 출력하는 이전 버전과 구별하기 위한 표시입니다.
+
+1. `zep-voting-popup-v1.1.1.zepapp.zip`을 기존 앱의 수정 화면에 업로드하고 저장합니다. ZIP에 main.js, coin-hud.html, vote-monitor.html이 포함되어야 합니다.
+2. 대상 맵의 Normal app 적용 목록에서 업데이트한 앱이 적용됐는지 확인합니다. 같은 역할의 구버전 앱이 별도로 적용되어 있다면 구버전 연결만 해제하세요. 저장 데이터를 지우거나 앱 자체를 삭제할 필요는 없습니다.
+3. 맵을 나갔다가 다시 들어와 위 버전 메시지와 `!version` 응답을 확인합니다. 메시지가 없다면 새 코드가 아직 실행되지 않은 상태일 가능성이 큽니다.
+4. 번호103, 값 votes:totals인 오브젝트에서 F 또는 채팅의 !votes를 실행합니다.
+5. 새 버전 표시가 있는데 이전 형식의 숫자 집계도 채팅에 보인다면 다른 구버전 앱이 동시에 실행 중일 가능성이 있습니다. 팝업 오류 안내나 빨간 스크립트 오류가 보이면 해당 메시지로 위젯 로딩 문제를 확인하세요.
+
+최신 팝업 코드와 ZIP에는 `투표함 A: ...코인 / ...표`처럼 숫자 집계를 채팅으로 출력하는 코드가 없습니다. 채팅에는 버전·지급·오류 안내만 나타납니다. 새 버전 메시지가 확인되지 않는 상황에서 위젯 API 오류라고 단정하지 않습니다.

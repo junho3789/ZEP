@@ -243,3 +243,11 @@ test('corrupt totals return popup error rather than fabricated zeros', () => {
     assert.equal(w.messages.at(-1).status, 'storage_error');
     assert.equal(w.messages.at(-1).totalCoins, undefined);
 });
+
+test('installed popup release is identifiable on join and via version command', () => {
+    const f = fixture(), p = joined(f);
+    assert.match(p.messages[0], /1\.1\.1-popup/);
+    f.handlers.onSay(p, '!version');
+    assert.match(p.messages.at(-1), /1\.1\.1-popup/);
+    assert.match(p.messages.at(-1), /팝업/);
+});

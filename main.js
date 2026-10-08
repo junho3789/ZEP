@@ -1,6 +1,7 @@
 /* ZEP runtime entrypoint. No npm dependencies or Node APIs. */
 var CoinRewards = (function () {
     "use strict";
+    var VERSION = "1.1.1-popup";
     var FIELD = "zepCoinRewards";
     var MAX_INTEGER = 9007199254740991;
     var MAX_CLAIMS = 1000;
@@ -361,6 +362,7 @@ var CoinRewards = (function () {
     }
 
     App.onJoinPlayer.Add(function (player) {
+        player.sendMessage("[코인 투표 앱 " + VERSION + "] 팝업 집계 버전 실행 중");
         var welcome = grant(player, "welcome:v1");
         if (welcome.status === "granted") player.sendMessage("첫 접속 보너스 100코인을 받았습니다!");
         else if (welcome.status !== "already_claimed" && welcome.status !== "vote_pending") {
@@ -392,6 +394,10 @@ var CoinRewards = (function () {
         }
     });
     App.onSay.Add(function (player, text) {
+        if (text === "!version") {
+            player.sendMessage("[코인 투표 앱 " + VERSION + "] 모니터 103 / votes:totals → 팝업");
+            return;
+        }
         if (text === "!vote-retry") { resumeVote(player); return; }
         if (text === "!votes") { showTotals(player); return; }
         if (text !== "!coins") return;
