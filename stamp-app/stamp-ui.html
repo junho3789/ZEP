@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+* {
+  box-sizing:border-box
+}
+html,body {
+  margin:0;
+  background:transparent;
+  font-family:system-ui,-apple-system,'Malgun Gothic',sans-serif;
+  color:#302e40
+}
+body {
+  padding:5px;
+  overflow:auto
+}
+main {
+  width:100%;
+  max-width:320px;
+  background:#fff;
+  border:1px solid #e8e5f2;
+  border-radius:16px;
+  box-shadow:0 4px 15px #29213e1a;
+  overflow:hidden
+}
+button {
+  font:inherit;
+  cursor:pointer
+}
+header button {
+  width:100%;
+  border:0;
+  background:white;
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:15px;
+  text-align:left;
+  color:inherit
+}
+.icon {
+  background:#eee8ff;
+  color:#7851db;
+  border-radius:10px;
+  padding:7px;
+  font-size:17px
+}
+.title {
+  font-weight:750;
+  font-size:14px;
+  flex:1
+}
+.count {
+  font-size:13px;
+  font-weight:750;
+  color:#7851db
+}
+.chevron {
+  color:#9891a6
+}
+section {
+  padding:0 16px 16px
+}
+p {
+  font-size:12px;
+  color:#8a8499;
+  line-height:1.6;
+  margin:0 0 12px
+}
+.track {
+  height:5px;
+  background:#f0edf7;
+  border-radius:8px;
+  overflow:hidden;
+  margin-bottom:17px
+}
+.fill {
+  height:100%;
+  background:#8b62e7;
+  transition:width .3s
+}
+.grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px 12px
+}
+.item {
+  text-align:center;
+  min-width:0
+}
+.stamp {
+  margin:0 auto 7px;
+  border:2px dashed #ddd6ed;
+  border-radius:50%;
+  width:58px;
+  height:58px;
+  display:grid;
+  place-items:center;
+  color:#c5bcd9;
+  background:#faf9fd;
+  font-size:24px;
+  font-weight:800
+}
+.done .stamp {
+  background:#f0e9ff;
+  color:#8152df;
+  border:3px double #a483eb;
+  transform:rotate(-9deg)
+}
+.name {
+  font-size:12px;
+  overflow-wrap:anywhere
+}
+.label {
+  font-size:10px;
+  color:#a19aac;
+  margin-top:3px
+}
+.done .label {
+  color:#8256d7
+}
+.footer {
+  margin-top:17px;
+  border-radius:9px;
+  padding:10px;
+  text-align:center;
+  background:#f7f5fb;
+  color:#8d849c;
+  font-size:12px;
+  line-height:1.6
+}
+.complete {
+  background:#efe8ff;
+  color:#7548cb
+}
+[hidden] {
+  display:none!important
+}
+@media(max-width:210px) {
+  header button {
+    padding:9px;
+    gap:5px
+  }
+  .title {
+    font-size:12px
+  }
+  .icon {
+    display:none
+  }
+  section {
+    padding:0 9px 12px
+  }
+  .stamp {
+    width:44px;
+    height:44px
+  }
+  .grid {
+    gap:10px
+  }
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+<button id="toggle" aria-expanded="true" aria-controls="content">
+<span class="icon" aria-hidden="true">✦</span>
+<span class="title">스탬프 수집</span>
+<span class="count" id="count">…</span>
+<span class="chevron" id="arrow">⌃</span>
+</button>
+</header>
+<section id="content">
+<p id="intro">오브젝트에서 F키를 눌러<br>스탬프를 모아보세요!</p>
+<div class="track">
+<div class="fill" id="fill" style="width:0">
+</div>
+</div>
+<div class="grid" id="grid">
+</div>
+<div class="footer" id="footer" role="status" aria-live="polite">수집 기록을 불러오는 중…</div>
+</section>
+</main>
+<script>
+
+(function () {
+  var parentWindow = window.parent;
+  var toggle = document.getElementById('toggle');
+  var content = document.getElementById('content');
+  var count = document.getElementById('count');
+  var arrow = document.getElementById('arrow');
+  var fill = document.getElementById('fill');
+  var grid = document.getElementById('grid');
+  var footer = document.getElementById('footer');
+
+  function post(type) {
+    parentWindow.postMessage({ type: type }, '*');
+  }
+
+  function createElement(tag, className, text) {
+    var element = document.createElement(tag);
+    element.className = className;
+    element.textContent = text;
+    return element;
+  }
+
+  function renderStamp(object, index) {
+    var item = document.createElement('div');
+    item.className = 'item' + (object.collected ? ' done' : '');
+    item.append(
+      createElement('div', 'stamp', object.collected ? '✓' : String(index + 1)),
+      createElement('div', 'name', object.name),
+      createElement('div', 'label', object.collected ? '수집 완료' : '미수집')
+    );
+    grid.append(item);
+  }
+
+  function renderState(state) {
+    content.hidden = !!state.collapsed;
+    toggle.setAttribute('aria-expanded', String(!state.collapsed));
+    arrow.textContent = state.collapsed ? '⌄' : '⌃';
+    grid.replaceChildren();
+
+    if (state.error) {
+      count.textContent = '확인 불가';
+      footer.textContent = state.error;
+      footer.className = 'footer';
+      fill.style.width = '0';
+      return;
+    }
+
+    count.textContent = state.count + '/' + state.required;
+    fill.style.width = Math.min(100, state.count / state.required * 100) + '%';
+    state.objects.forEach(renderStamp);
+
+    var complete = state.count >= state.required;
+    footer.className = 'footer' + (complete ? ' complete' : '');
+    footer.textContent = complete
+      ? '모두 모았어요! 안내데스크에서 응모하세요.'
+      : '스탬프 ' + state.required + '개를 모으면 이벤트 응모 가능';
+  }
+
+  toggle.onclick = function () { post('toggle'); };
+  window.addEventListener('message', function (event) {
+    if (event.source !== parentWindow || !event.data || event.data.type !== 'state') return;
+    renderState(event.data);
+  });
+  post('ready');
+}());
+</script></body></html>

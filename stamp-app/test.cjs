@@ -1,0 +1,13 @@
+const fs=require('node:fs'), vm=require('node:vm'), assert=require('node:assert/strict');
+const source=fs.readFileSync(__dirname+'/main.js','utf8');
+function env(){const events={};const App={};['onJoinPlayer','onLeavePlayer','onObjectTouched','onSay'].forEach(k=>App[k]={Add:f=>events[k]=f});const context={App};vm.createContext(context);vm.runInContext(source,context);context.CONFIG.objects.forEach(x=>x.url='https://example.com/'+x.id);context.CONFIG.formUrl='https://forms.gle/test';const messages=[],links=[],widgets=[];const p={storage:JSON.stringify({other:42}),save(){},sendMessage:x=>messages.push(x),openWebLink:x=>links.push(x),showWidgetResponsive(...args){const w={args,destroy(){this.dead=true},sendMessage(x){this.state=x},onMessage:{Add(f){w.receive=f}}};widgets.push(w);return w}};events.onJoinPlayer(p);widgets.at(-1).receive(p,{type:'ready'});return {events,context,p,messages,links,widgets,hit(n,v){events.onObjectTouched(p,0,0,0,{type:21,text:n,param1:v})}}}
+let t=env();t.hit(205,'stamp:desk');assert.equal(t.links.length,0);
+for(let i=1;i<=4;i++)t.hit(200+i,'stamp:'+i);
+assert.equal(t.widgets.at(-1).state.count,4);assert.equal(JSON.parse(t.p.storage).other,42);t.hit(201,'stamp:1');assert.equal(JSON.parse(t.p.storage).zepStampEvents['stamp-event-01'].ids.length,4);t.hit(205,'stamp:desk');assert.equal(t.links.at(-1),'https://forms.gle/test');
+t.events.onLeavePlayer(t.p);t.events.onJoinPlayer(t.p);t.widgets.at(-1).receive(t.p,{type:'ready'});assert.equal(t.widgets.at(-1).state.count,4);t.widgets.at(-1).receive(t.p,{type:'toggle'});t.widgets.at(-1).receive(t.p,{type:'ready'});assert.equal(t.widgets.at(-1).state.collapsed,true);assert.equal(t.widgets.at(-1).args[3],83);
+t=env();t.context.CONFIG.objects[0].url='';t.hit(201,'stamp:1');assert.equal(t.links.length,0);assert.equal(JSON.parse(t.p.storage).zepStampEvents,undefined);
+t=env();const before=t.p.storage;t.p.save=()=>{throw Error('offline')};t.hit(201,'stamp:1');assert.equal(t.p.storage,before);
+t=env();t.p.openWebLink=()=>{throw Error('blocked')};t.hit(201,'stamp:1');assert.equal(JSON.parse(t.p.storage).zepStampEvents,undefined);
+t=env();t.p.storage='corrupt';t.hit(201,'stamp:1');assert.equal(t.p.storage,'corrupt');assert.equal(t.links.length,0);
+t=env();t.hit(201,'wrong');assert.equal(t.links.length,0);t.context.CONFIG.requiredStamps=2;t.hit(201,'stamp:1');t.hit(202,'stamp:2');t.hit(205,'stamp:desk');assert.equal(t.links.at(-1),'https://forms.gle/test');
+console.log('PASS: collection, duplicate prevention, desk gate, settings, unrelated storage preservation, rejoin, collapse, missing URL, save failure, open failure, corrupt storage, incorrect object value.');
