@@ -9,16 +9,22 @@
 }
 html,body {
   margin:0;
+  width:100%;
+  height:100%;
+  overflow:hidden;
   background:transparent;
   font-family:system-ui,-apple-system,'Malgun Gothic',sans-serif;
   color:#302e40
 }
 body {
-  padding:5px;
-  overflow:auto
+  position:relative
 }
 main {
-  width:100%;
+  position:absolute;
+  top:5px;
+  left:5px;
+  width:calc(100% - 10px);
+  transform-origin:top left;
   max-width:320px;
   background:#fff;
   border:1px solid #e8e5f2;
@@ -136,6 +142,19 @@ p {
   background:#efe8ff;
   color:#7548cb
 }
+body.compact section {
+  display:none
+}
+body.compact header button {
+  padding:8px;
+  gap:5px
+}
+body.compact .icon {
+  display:none
+}
+body.compact .title {
+  font-size:12px
+}
 [hidden] {
   display:none!important
 }
@@ -188,6 +207,9 @@ p {
 
 (function () {
   var parentWindow = window.parent;
+  var card = document.querySelector('main');
+  var currentState = null;
+  var fitScheduled = false;
   var toggle = document.getElementById('toggle');
   var content = document.getElementById('content');
   var count = document.getElementById('count');
@@ -218,10 +240,31 @@ p {
     grid.append(item);
   }
 
+  // 위젯의 실제 표시 영역에 맞춰 카드 전체를 축소해 내용 잘림을 방지합니다.
+  function fitCard() {
+    fitScheduled = false;
+    var width = Math.max(1, window.innerWidth - 10);
+    var height = Math.max(1, window.innerHeight - 10);
+    var compact = window.innerHeight < 140 || window.innerWidth < 140;
+    document.body.classList.toggle('compact', compact);
+    var collapsed = compact || !!(currentState && currentState.collapsed);
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    arrow.textContent = collapsed ? '⌄' : '⌃';
+    toggle.title = compact ? '창 크기를 늘리면 개별 스탬프를 볼 수 있습니다.' : '스탬프 현황 접기/펼치기';
+    var scale = Math.min(1, width / Math.max(1, card.offsetWidth), height / Math.max(1, card.offsetHeight));
+    card.style.transform = 'scale(' + scale + ')';
+  }
+
+  function requestFit() {
+    if (fitScheduled) return;
+    fitScheduled = true;
+    window.requestAnimationFrame(fitCard);
+  }
+
   function renderState(state) {
+    currentState = state;
     content.hidden = !!state.collapsed;
-    toggle.setAttribute('aria-expanded', String(!state.collapsed));
-    arrow.textContent = state.collapsed ? '⌄' : '⌃';
+    requestFit();
     grid.replaceChildren();
 
     if (state.error) {
@@ -267,6 +310,12 @@ p {
     if (event.source !== parentWindow || !event.data || event.data.type !== 'state') return;
     renderState(event.data);
   });
+  window.addEventListener('resize', requestFit);
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(requestFit).observe(card);
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(requestFit);
+  requestFit();
   post('ready');
 }());
 </script></body></html>

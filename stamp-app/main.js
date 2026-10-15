@@ -20,7 +20,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.3-admin-reset';
+  var VERSION = '1.4-responsive';
   var sessions = [];
 
   // 설정과 공통 함수

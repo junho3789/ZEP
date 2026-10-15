@@ -197,12 +197,13 @@ test('HUD returns keyboard focus after click, pointer release, leaving, and arro
   const sent = [];
   const parent = { postMessage: message => sent.push(message), focus: () => { focused++; } };
   const document = {
+    querySelector() { return {}; },
     activeElement: { blur: () => { blurred++; } },
     getElementById(id) { return elements[id] ||= {}; },
     addEventListener(type, listener) { listeners[type] = listener; },
     documentElement: { addEventListener(type, listener) { rootListeners[type] = listener; } }
   };
-  vm.runInNewContext(script, { document, window: { parent, addEventListener() {} } });
+  vm.runInNewContext(script, { document, window: { parent, addEventListener() {}, requestAnimationFrame() {} } });
   elements.toggle.onclick();
   listeners.pointerup();
   rootListeners.mouseleave();
