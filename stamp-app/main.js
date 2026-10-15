@@ -20,7 +20,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.2-popup';
+  var VERSION = '1.3-admin-reset';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -224,6 +224,108 @@ var CONFIG = {
     }
   }
 
+  // 관리자 초기화: 서버의 읽기 전용 role만 신뢰합니다.
+  // 공식 권한: 관리자=3000, 맵 소유자=3001. 스태프/에디터는 제외합니다.
+  function isAdministrator(player) {
+    return player.role === 3000 || player.role === 3001;
+  }
+
+  function resetPlayerProgress(target) {
+    var session = findSession(target);
+    if (!session || session.busy) return false;
+    session.busy = true;
+    var previousStorage = target.storage;
+    try {
+      var progress = readProgress(target);
+      progress.events[CONFIG.eventId] = { version: 1, ids: [] };
+      progress.root.zepStampEvents = progress.events;
+      target.storage = JSON.stringify(progress.root);
+      target.save();
+      session.lastPopupUrl = null;
+      session.lastPopupAt = 0;
+    } catch (error) {
+      target.storage = previousStorage;
+      return false;
+    } finally {
+      session.busy = false;
+      sendProgress(session);
+    }
+    notify(target, '관리자가 현재 이벤트의 스탬프를 초기화했습니다. 다시 수집할 수 있습니다.');
+    return true;
+  }
+
+  function handleAdminCommand(player, text) {
+    var parts = text.trim().split(/\s+/);
+    if (parts[0] !== '!stamp-reset' && parts[0] !== '!stamp-players') return false;
+    if (!isAdministrator(player)) {
+      var deniedSession = findSession(player);
+      if (deniedSession) deniedSession.pendingReset = null;
+      notify(player, '관리자 또는 맵 소유자만 사용할 수 있습니다.');
+      return true;
+    }
+    var session = findSession(player);
+    if (!session) return true;
+    if (parts[0] === '!stamp-players') {
+      sessions.forEach(function (item) {
+        notify(player, '이름: ' + item.player.name + ' / ID: ' + item.player.id);
+      });
+      return true;
+    }
+    var action = parts[1];
+    if (action === 'cancel' && parts.length === 2) {
+      session.pendingReset = null;
+      notify(player, '초기화를 취소했습니다.');
+      return true;
+    }
+    if (action === 'confirm' && parts.length === 2) {
+      var request = session.pendingReset;
+      // 확인 명령은 한 번만 실행할 수 있고, 대상은 요청 시점으로 고정합니다.
+      session.pendingReset = null;
+      if (!request || Date.now() >= request.expiresAt || request.eventId !== CONFIG.eventId) {
+        notify(player, '확인할 초기화 요청이 없거나 만료됐습니다. 다시 요청하세요.');
+        return true;
+      }
+      var success = 0;
+      var skipped = 0;
+      request.targets.forEach(function (targetSession) {
+        if (findSession(targetSession.player) !== targetSession) {
+          skipped += 1;
+          return;
+        }
+        if (resetPlayerProgress(targetSession.player)) success += 1;
+        else skipped += 1;
+      });
+      notify(player, '현재 이벤트 초기화: 처리 ' + success + '명, 실패/퇴장 ' + skipped + '명.');
+      return true;
+    }
+    var targets;
+    if (action === 'me' && parts.length === 2) {
+      targets = [session];
+    } else if (action === 'all' && parts.length === 2) {
+      targets = sessions.slice();
+    } else if (action === 'id' && parts.length === 3) {
+      targets = sessions.filter(function (item) { return String(item.player.id) === parts[2]; });
+    } else {
+      session.pendingReset = null;
+      notify(player, '사용법: !stamp-reset me | id 이용자ID | all / 확인: !stamp-reset confirm / 취소: !stamp-reset cancel / 접속자: !stamp-players');
+      return true;
+    }
+    session.pendingReset = null;
+    if (!targets.length) {
+      notify(player, '대상 이용자가 현재 맵에 접속해 있지 않습니다. !stamp-players로 ID를 확인하세요.');
+      return true;
+    }
+    session.pendingReset = {
+      targets: targets, eventId: CONFIG.eventId, expiresAt: Date.now() + 30000
+    };
+    var description = action === 'all'
+      ? '현재 맵 접속자 전체 ' + targets.length + '명 (미접속자 제외)'
+      : targets[0].player.name + ' (ID: ' + targets[0].player.id + ')';
+    notify(player, '초기화 대상: ' + description + ' / 이벤트: ' + CONFIG.eventId +
+      '. 30초 안에 !stamp-reset confirm 을 입력하세요. 취소: !stamp-reset cancel');
+    return true;
+  }
+
   // ZEP 이벤트 연결
   validateConfig();
 
@@ -251,6 +353,7 @@ var CONFIG = {
   });
 
   App.onSay.Add(function (player, text) {
+    if (handleAdminCommand(player, text)) return;
     if (text === '!stamp-version') {
       notify(player, '앱 ' + VERSION);
       return;

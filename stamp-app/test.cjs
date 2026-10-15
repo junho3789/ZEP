@@ -211,3 +211,143 @@ test('HUD returns keyboard focus after click, pointer release, leaving, and arro
   assert.equal(focused, 4);
   assert.equal(sent.at(-1).type, 'toggle');
 });
+
+function say(app, text, player = app.player) {
+  app.events.onSay(player, text);
+}
+
+function joinTarget(app, id, name = '참가자') {
+  const target = {
+    ...app.player, id, name, role: 0,
+    storage: JSON.stringify({ other: 77 }),
+    save() {}, sendMessage() {}
+  };
+  app.events.onJoinPlayer(target);
+  app.widgets.at(-1).receive(target, { type: 'ready' });
+  return target;
+}
+
+function savedIds(player, eventId = 'stamp-event-01') {
+  return JSON.parse(player.storage).zepStampEvents?.[eventId]?.ids;
+}
+
+test('admin reset requires confirmation, refreshes UI, and allows immediate recollection', () => {
+  const app = createApp();
+  app.player.role = 3000;
+  app.collectAll();
+  say(app, '!stamp-reset me');
+  assert.equal(savedIds(app.player).length, 4);
+  say(app, '!stamp-reset confirm');
+  assert.deepEqual(savedIds(app.player), []);
+  assert.equal(app.widgets.at(-1).state.count, 0);
+  assert.equal(JSON.parse(app.player.storage).other, 42);
+  app.hit(204, 'stamp:4');
+  assert.equal(savedIds(app.player).length, 1);
+  say(app, '!stamp-reset confirm');
+  assert.equal(savedIds(app.player).length, 1);
+});
+
+test('guests, staff, editors, and unknown roles cannot reset or list players', () => {
+  for (const role of [-1, 0, 1000, 2000, undefined, '3000']) {
+    const app = createApp();
+    app.player.role = role;
+    app.collectAll();
+    const before = app.player.storage;
+    say(app, '!stamp-reset all');
+    say(app, '!stamp-reset confirm');
+    say(app, '!stamp-players');
+    assert.equal(app.player.storage, before);
+    assert.ok(app.messages.at(-1).includes('관리자'));
+  }
+});
+
+test('owner is allowed, but confirmation after losing permission is denied', () => {
+  const app = createApp();
+  app.player.role = 3001;
+  app.collectAll();
+  say(app, '!stamp-reset me');
+  app.player.role = 2000;
+  say(app, '!stamp-reset confirm');
+  assert.equal(savedIds(app.player).length, 4);
+  app.player.role = 3001;
+  say(app, '!stamp-reset confirm');
+  assert.equal(savedIds(app.player).length, 4);
+  say(app, '!stamp-reset me');
+  say(app, '!stamp-reset confirm');
+  assert.equal(savedIds(app.player).length, 0);
+});
+
+test('expired, cancelled, and malformed requests never reset progress', () => {
+  const app = createApp();
+  app.player.role = 3000;
+  app.collectAll();
+  say(app, '!stamp-reset me');
+  app.advance(30000);
+  say(app, '!stamp-reset confirm');
+  assert.equal(savedIds(app.player).length, 4);
+  say(app, '!stamp-reset me');
+  say(app, '!stamp-reset cancel');
+  say(app, '!stamp-reset confirm');
+  assert.equal(savedIds(app.player).length, 4);
+  say(app, '!stamp-reset me');
+  say(app, '!stamp-reset all extra');
+  say(app, '!stamp-reset confirm');
+  assert.equal(savedIds(app.player).length, 4);
+});
+
+test('ID targets are exact and other event records are preserved', () => {
+  const app = createApp();
+  app.player.id = 'admin';
+  app.player.role = 3000;
+  app.collectAll();
+  const target = joinTarget(app, '123');
+  target.storage = JSON.stringify({
+    other: 77,
+    zepStampEvents: {
+      'stamp-event-01': { version: 1, ids: ['s1', 's2'] },
+      previous: { version: 1, ids: ['old'] }
+    }
+  });
+  say(app, '!stamp-reset id 12');
+  say(app, '!stamp-reset confirm');
+  assert.equal(savedIds(target).length, 2);
+  say(app, '!stamp-reset id 123');
+  say(app, '!stamp-reset confirm');
+  assert.deepEqual(savedIds(target), []);
+  assert.deepEqual(savedIds(target, 'previous'), ['old']);
+  assert.equal(JSON.parse(target.storage).other, 77);
+  assert.equal(savedIds(app.player).length, 4);
+});
+
+test('all applies to a snapshot of current sessions and skips departed players', () => {
+  const app = createApp();
+  app.player.role = 3000;
+  app.collectAll();
+  const leaving = joinTarget(app, 'leaving');
+  const stored = JSON.stringify({ zepStampEvents: { 'stamp-event-01': { version: 1, ids: ['s1'] } } });
+  leaving.storage = stored;
+  say(app, '!stamp-reset all');
+  app.events.onLeavePlayer(leaving);
+  const newcomer = joinTarget(app, 'newcomer');
+  newcomer.storage = stored;
+  say(app, '!stamp-reset confirm');
+  assert.deepEqual(savedIds(app.player), []);
+  assert.equal(leaving.storage, stored);
+  assert.equal(newcomer.storage, stored);
+  assert.ok(app.messages.at(-1).includes('처리 1명, 실패/퇴장 1명'));
+});
+
+test('save failures report partial results and restore failed player storage', () => {
+  const app = createApp();
+  app.player.role = 3000;
+  app.collectAll();
+  const failing = joinTarget(app, 'failing');
+  failing.storage = JSON.stringify({ zepStampEvents: { 'stamp-event-01': { version: 1, ids: ['s1'] } } });
+  const before = failing.storage;
+  failing.save = () => { throw Error('offline'); };
+  say(app, '!stamp-reset all');
+  say(app, '!stamp-reset confirm');
+  assert.deepEqual(savedIds(app.player), []);
+  assert.equal(failing.storage, before);
+  assert.ok(app.messages.at(-1).includes('처리 1명, 실패/퇴장 1명'));
+});
