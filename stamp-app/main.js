@@ -3,6 +3,8 @@ var CONFIG = {
   eventId: 'stamp-event-01',
   requiredStamps: 4,
   formUrl: '',
+  // 동일 링크의 연속 F 입력에 의한 팝업 중첩 방지
+  popupCooldownMs: 1200,
   deskNumber: '205',
   deskValue: 'stamp:desk',
   // 화면 대비 % 여백. 접으면 아래쪽 여백을 늘려 위젯 높이를 줄입니다.
@@ -18,6 +20,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
+  var VERSION = '1.2-popup';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -116,13 +119,24 @@ var CONFIG = {
   }
 
   function destroyWidget(session) {
-    if (!session.widget) return;
-    try { session.widget.destroy(); }
-    catch (error) { /* 이미 제거된 위젯은 무시합니다. */ }
+    if (!session.widget) return true;
+    var widget = session.widget;
+    // 제거에 실패하면 새 위젯을 겹쳐 만들지 않습니다.
+    try {
+      if (widget.destroy() === false) return false;
+    } catch (error) {
+      return false;
+    }
+    session.widget = null;
+    session.ready = false;
+    return true;
   }
 
   function showHud(session) {
-    destroyWidget(session);
+    if (!destroyWidget(session)) {
+      notify(session.player, 'UI를 정리하지 못했습니다. 맵에 재접속해 주세요.');
+      return;
+    }
     session.ready = false;
     var layout = CONFIG.ui;
     var bottom = session.collapsed ? layout.collapsedBottom : layout.bottom;
@@ -148,8 +162,17 @@ var CONFIG = {
       notify(player, '링크가 아직 설정되지 않았습니다. 관리자에게 문의하세요.');
       return false;
     }
+    var session = findSession(player);
+    var now = Date.now();
+    if (session && session.lastPopupUrl === url &&
+        now - session.lastPopupAt < CONFIG.popupCooldownMs) return false;
     try {
-      player.openWebLink(url);
+      // 공식 SDK: 두 번째 인자가 true이면 ZEP 팝업으로 표시합니다.
+      player.openWebLink(url, true);
+      if (session) {
+        session.lastPopupUrl = url;
+        session.lastPopupAt = now;
+      }
       return true;
     } catch (error) {
       notify(player, '링크를 열지 못했습니다. 다시 시도하세요.');
@@ -205,8 +228,18 @@ var CONFIG = {
   validateConfig();
 
   App.onJoinPlayer.Add(function (player) {
-    var session = { player: player, collapsed: false, ready: false, widget: null, busy: false };
+    var previous = findSession(player);
+    if (previous) {
+      // 중복 입장 콜백에서도 하나의 UI만 유지합니다.
+      try { showHud(previous); } catch (error) {}
+      return;
+    }
+    var session = {
+      player: player, collapsed: false, ready: false, widget: null, busy: false,
+      lastPopupUrl: null, lastPopupAt: 0
+    };
     sessions.push(session);
+    notify(player, '앱 ' + VERSION + ' 실행 중');
     try { showHud(session); }
     catch (error) { notify(player, 'UI를 열지 못했습니다. !stamps로 현황을 확인하세요.'); }
   });
@@ -218,6 +251,19 @@ var CONFIG = {
   });
 
   App.onSay.Add(function (player, text) {
+    if (text === '!stamp-version') {
+      notify(player, '앱 ' + VERSION);
+      return;
+    }
+    if (text === '!stamp-ui-hide') {
+      var current = findSession(player);
+      if (current && !destroyWidget(current)) {
+        notify(player, 'UI를 정리하지 못했습니다. 맵에 재접속해 주세요.');
+      } else {
+        notify(player, '스탬프 UI를 숨겼습니다. !stamps로 다시 표시할 수 있습니다.');
+      }
+      return;
+    }
     if (text !== '!stamps') return;
     try {
       var progress = readProgress(player);
@@ -227,6 +273,11 @@ var CONFIG = {
     } catch (error) {
       notify(player, '기록을 읽지 못했습니다.');
     }
+  });
+
+  App.onDestroy.Add(function () {
+    sessions.forEach(destroyWidget);
+    sessions = [];
   });
 
   App.onLeavePlayer.Add(function (player) {

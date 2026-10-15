@@ -243,7 +243,26 @@ p {
       : '스탬프 ' + state.required + '개를 모으면 이벤트 응모 가능';
   }
 
-  toggle.onclick = function () { post('toggle'); };
+  // 수집 UI에 남은 포커스가 맵의 방향키 입력을 가로채지 않게 반환합니다.
+  // 외부 프로그램/구글폼의 입력창에는 관여하지 않습니다.
+  function releaseFocus() {
+    if (document.activeElement && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
+    try { parentWindow.focus(); } catch (error) {}
+  }
+
+  toggle.onclick = function () {
+    releaseFocus();
+    post('toggle');
+  };
+  document.addEventListener('pointerup', releaseFocus);
+  document.documentElement.addEventListener('mouseleave', releaseFocus);
+  document.addEventListener('keydown', function (event) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Escape'].indexOf(event.key) >= 0) {
+      releaseFocus();
+    }
+  });
   window.addEventListener('message', function (event) {
     if (event.source !== parentWindow || !event.data || event.data.type !== 'state') return;
     renderState(event.data);
