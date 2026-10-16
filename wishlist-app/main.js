@@ -44,19 +44,25 @@ var CONFIG = {
   }
   function destroy(s) {
     if (s.widget) {
-      try { if (s.widget.destroy() === false) return false; } catch(e) { return false; }
+      // ZEP 문서는 destroy()의 반환값을 성공 여부로 정의하지 않습니다.
+      try { s.widget.destroy(); } catch(e) { return false; }
     }
     s.widget = null; s.ready = false; return true;
   }
   function show(s) {
-    if (!destroy(s)) { tell(s.player, '창을 정리하지 못했습니다. 재접속해 주세요.'); return; }
+    if (!destroy(s)) return false;
     var u = CONFIG.ui;
     var w = s.player.showWidgetResponsive('wishlist.html', u.top, u.right, s.collapsed ? u.collapsedBottom : u.bottom, u.left);
     s.widget = w;
     w.onMessage.Add(function(p, d) {
       if (p !== s.player || s.widget !== w || !record(d)) return;
       if (d.type === 'ready') { s.ready = true; send(s); return; }
-      if (d.type === 'toggle') { s.collapsed = !s.collapsed; show(s); return; }
+      if (d.type === 'toggle') {
+        s.collapsed = !s.collapsed;
+        // 제거 API 실패 시에도 기존 위젯에서 접기/펼치기를 적용합니다.
+        if (!show(s)) send(s);
+        return;
+      }
       try {
         var progress = read(p), data = progress.data;
         if (d.type === 'sort' && ['recent','number','name'].indexOf(d.sort) >= 0) {
@@ -77,11 +83,12 @@ var CONFIG = {
         }
       } catch(e) { send(s, '처리하지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
     });
+    return true;
   }
   App.onJoinPlayer.Add(function(p) {
     var s = find(p);
     if (!s) { s = {player:p, collapsed:false, ready:false, widget:null}; sessions.push(s); }
-    try { show(s); } catch(e) { tell(p, '창을 열지 못했습니다. !wishlist로 다시 열어 주세요.'); }
+    try { if (!show(s)) send(s); } catch(e) { tell(p, '창을 열지 못했습니다. !wishlist로 다시 열어 주세요.'); }
   });
   App.onObjectTouched.Add(function(p, x, y, tileId, obj) {
     // 명시적인 접두어로 다른 앱의 Script 오브젝트와 구분합니다.
@@ -104,7 +111,7 @@ var CONFIG = {
       tell(p, message); send(s, message);
     } catch(e) { tell(p, '저장하지 못했습니다. 기록과 설정을 확인해 주세요.'); }
   });
-  App.onSay.Add(function(p, text) { if (text === '!wishlist') { var s = find(p); if (s) { try { s.collapsed = false; show(s); } catch(e) { tell(p, '창을 열지 못했습니다.'); } } } });
+  App.onSay.Add(function(p, text) { if (text === '!wishlist') { var s = find(p); if (s) { try { s.collapsed = false; if (!show(s)) send(s); } catch(e) { tell(p, '창을 열지 못했습니다.'); } } } });
   App.onLeavePlayer.Add(function(p) { sessions = sessions.filter(function(s) { if(s.player !== p) return true; destroy(s); return false; }); });
   App.onDestroy.Add(function() { sessions.forEach(destroy); sessions = []; });
 }());

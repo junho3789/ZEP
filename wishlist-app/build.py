@@ -10,7 +10,7 @@ with tempfile.TemporaryDirectory() as tmp:
     script = Path(tmp) / 'ui.js'
     script.write_text(re.search(r'<script>(.*?)</script>', (ROOT / 'wishlist.html').read_text(), re.S).group(1))
     subprocess.run(['node', '--check', str(script)], check=True)
-out = ROOT.parent / 'dist' / 'zep-booth-wishlist-v1.1.zepapp.zip'
+out = ROOT.parent / 'dist' / 'zep-booth-wishlist-v1.2.zepapp.zip'
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
     for name in ('main.js', 'wishlist.html'):
         z.write(ROOT / name, name)
