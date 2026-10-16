@@ -1,4 +1,4 @@
-/* 동일 스페이스의 모든 대상 맵에 같은 앱을 적용하세요. */
+/* 노멀 앱: 동일 스페이스 모든 맵에 적용. 사이드바 앱: 스페이스에 적용. */
 var CONFIG = {
   maxItems: 200,
   // 이전 단일 맵 기록의 키. 원래 맵 ID를 아는 경우 legacyMapId를 입력하면 이동도 유지됩니다.
@@ -142,12 +142,25 @@ var CONFIG = {
     });
     return true;
   }
-  App.onJoinPlayer.Add(function(p) {
+  function join(p) {
     var s = find(p);
     if (!s) { s = {player:p, collapsed:false, ready:false, widget:null}; sessions.push(s); }
     try { finishTransfer(p); } catch(e) { tell(p, '이동 기록을 처리하지 못했습니다. !wishlist-cancel로 취소하거나 관리자에게 문의하세요.'); }
     try { if (!show(s)) send(s); } catch(e) { tell(p, '창을 열지 못했습니다. !wishlist로 다시 열어 주세요.'); }
+  }
+  App.onJoinPlayer.Add(join);
+  // 앱을 실행하기 전부터 접속 중인 플레이어도 창을 표시합니다.
+  App.onStart.Add(function() {
+    (App.players || []).forEach(function(p) { if (!find(p)) join(p); });
   });
+  function openWishlist(p) {
+    var s = find(p);
+    if (!s) { join(p); return; }
+    try { s.collapsed = false; if (!show(s)) send(s); }
+    catch(e) { tell(p, '창을 열지 못했습니다.'); }
+  }
+  // 스페이스 전체에 설치한 사이드바 앱 아이콘으로 어느 맵에서든 다시 열 수 있습니다.
+  App.onSidebarTouched.Add(openWishlist);
   App.onObjectTouched.Add(function(p, x, y, tileId, obj) {
     if (!obj || obj.type !== 21 || typeof obj.param1 !== 'string' || !/^wishlist(?:$|:)/.test(obj.param1)) return;
     var number = String(obj.text), s = find(p);
@@ -177,13 +190,13 @@ var CONFIG = {
     } catch(e) { tell(p, '등록하지 못했습니다. 하트의 번호·이름·목적지 설정과 저장 기록을 확인해 주세요.'); }
   });
   App.onSay.Add(function(p, text) {
+    if (text === '!wishlist') { openWishlist(p); return; }
     var s = find(p); if (!s) return;
     if (text === '!wishlist-map') { tell(p, '스페이스 ID: ' + App.spaceHashID + ' / 맵 ID: ' + App.mapHashID + ' / 현재 타일: ' + p.tileX + ', ' + p.tileY); return; }
     if (text === '!wishlist-cancel') {
       try { var progress = read(p); delete progress.data.pending; save(p, progress); s.lastMove = 0; tell(p, '이동 요청을 취소했습니다.'); send(s); }
       catch(e) { tell(p, '이동 요청 취소를 저장하지 못했습니다.'); } return;
     }
-    if (text === '!wishlist') { try { s.collapsed = false; if (!show(s)) send(s); } catch(e) { tell(p, '창을 열지 못했습니다.'); } }
   });
   App.onLeavePlayer.Add(function(p) { sessions = sessions.filter(function(s) { if(s.player !== p) return true; destroy(s); return false; }); });
   App.onDestroy.Add(function() { sessions.forEach(destroy); sessions = []; });
