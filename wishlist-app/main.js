@@ -2,7 +2,7 @@
 var CONFIG = {
   mapKey: 'booth-map-01',
   maxItems: 200,
-  ui: { top: 10, right: 2, bottom: 22, left: 66, collapsedBottom: 81 },
+  ui: { top: 10, right: 2, bottom: 22, left: 66, collapsedBottom: 76 },
   // 선택: 번호별 도착 위치를 지정하면 최초 상호작용 위치 대신 사용합니다.
   destinations: {} // 예: '101': { x: 12, y: 8 }
 };
@@ -104,7 +104,7 @@ var CONFIG = {
       tell(p, message); send(s, message);
     } catch(e) { tell(p, '저장하지 못했습니다. 기록과 설정을 확인해 주세요.'); }
   });
-  App.onSay.Add(function(p, text) { if (text === '!wishlist') { var s = find(p); if (s) { try { show(s); } catch(e) { tell(p, '창을 열지 못했습니다.'); } } } });
+  App.onSay.Add(function(p, text) { if (text === '!wishlist') { var s = find(p); if (s) { try { s.collapsed = false; show(s); } catch(e) { tell(p, '창을 열지 못했습니다.'); } } } });
   App.onLeavePlayer.Add(function(p) { sessions = sessions.filter(function(s) { if(s.player !== p) return true; destroy(s); return false; }); });
   App.onDestroy.Add(function() { sessions.forEach(destroy); sessions = []; });
 }());
