@@ -4,7 +4,7 @@ var CONFIG = {
   maxItems: 200,
   ui: { top: 10, right: 2, bottom: 22, left: 66 },
   // 좌측 채팅창 우측의 하단 영역 (화면 대비 % 여백)
-  minimized: { top: 85, right: 49, bottom: 4, left: 42 },
+  minimized: { top: 90.5, right: 77, bottom: 0.8, left: 18.7 },
   // 선택: 번호별 도착 위치를 지정하면 최초 상호작용 위치 대신 사용합니다.
   destinations: {} // 예: '101': { x: 12, y: 8 }
 };
