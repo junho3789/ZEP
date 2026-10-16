@@ -82,7 +82,7 @@ var CONFIG = {
     try {
       var data = read(s.player).data;
       payload.items = data.items.map(function(i) {
-        return {id:i.id, number:i.number, name:i.name, mapId:i.mapId, mapName:mapName(i.mapId, i.mapName) || (i.mapId ? '맵 이름 확인 필요' : '맵 정보 없음'), otherMap:!!i.mapId && i.mapId !== App.mapHashID, needsRegistration:!i.mapId};
+        return {id:i.id, number:i.number, name:i.name, mapId:i.mapId, mapName:mapName(i.mapId, i.mapName) || (i.mapId ? '맵 이름 확인 필요' : '맵 정보 없음'), otherMap:!!i.mapId && i.mapId !== App.mapHashID, needsRegistration:!i.mapId, expanded:!!(s.expandedIds && s.expandedIds[i.id])};
       });
       payload.sort = data.sort;
     } catch(e) { payload.error = '기록을 읽지 못했습니다. 관리자에게 문의하세요.'; }
@@ -136,6 +136,17 @@ var CONFIG = {
       s.lastMove = 0; send(s, '맵 이동 요청에 실패했습니다. 목적지 맵과 입장 권한을 확인해 주세요.');
     }
   }
+  function moveToMap(s, item, progress) {
+    var p = s.player;
+    if (s.lastMove && Date.now() - s.lastMove < 800) return;
+    if (!hash(item.mapId)) { send(s, '맵 정보가 없습니다. 원래 위치에서 다시 등록해 주세요.'); return; }
+    // 맵 이름은 맵의 기본 입장 위치로 이동합니다. 이전 부스 이동 요청은 취소합니다.
+    if (progress.data.pending) { delete progress.data.pending; save(p, progress); }
+    if (item.mapId === currentMap()) { send(s, '현재 이 맵에 있습니다.'); return; }
+    s.lastMove = Date.now();
+    try { p.spawnAtMap(App.spaceHashID, item.mapId); send(s, '해당 맵으로 이동을 요청했습니다.'); }
+    catch(e) { s.lastMove = 0; send(s, '맵으로 이동하지 못했습니다. 입장 권한과 맵 설정을 확인해 주세요.'); }
+  }
   function show(s) {
     if (!destroy(s)) return false;
     var u = s.collapsed ? CONFIG.minimized : CONFIG.ui;
@@ -151,11 +162,17 @@ var CONFIG = {
         if (typeof d.id !== 'string') return;
         var item = data.items.filter(function(i) { return i.id === d.id; })[0];
         if (!item) return;
+        if (d.type === 'toggleItem') {
+          if (!s.expandedIds) s.expandedIds = {};
+          s.expandedIds[item.id] = !s.expandedIds[item.id];
+          send(s); return;
+        }
         if (d.type === 'delete') {
           data.items = data.items.filter(function(i) { return i.id !== d.id; });
           if (data.pending && data.pending.id === item.id) delete data.pending;
-          save(p, progress); send(s, item.name + ' 삭제됨');
+          save(p, progress); if (s.expandedIds) delete s.expandedIds[item.id]; send(s, item.name + ' 삭제됨');
         } else if (d.type === 'move') move(s, item, progress);
+        else if (d.type === 'moveMap') moveToMap(s, item, progress);
       } catch(e) { send(s, '처리하지 못했습니다. 기록·목적지·저장 상태를 확인해 주세요.'); }
     });
     return true;
