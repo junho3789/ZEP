@@ -8,6 +8,8 @@ var CONFIG = {
   legacyMapId: '',
   ui: { top: 10, right: 2, bottom: 22, left: 66 },
   minimized: { top: 90.5, right: 77, bottom: 0.8, left: 18.7 },
+  // 채팅창 옆 고정 위치: 왼쪽 355px, 아래 16px. 위젯 영역 64×64px.
+  miniAnchor: { left: 355, bottom: 16, width: 64, height: 64 },
   transferTimeoutMs: 120000,
   // 현재 맵의 번호별 고정 목적지. 미설정이면 등록 당시 플레이어 위치를 저장합니다.
   // 예: '101': { mapId: '목적지맵ID', x: 12, y: 8 }
@@ -147,15 +149,35 @@ var CONFIG = {
     try { p.spawnAtMap(App.spaceHashID, item.mapId); send(s, '해당 맵으로 이동을 요청했습니다.'); }
     catch(e) { s.lastMove = 0; send(s, '맵으로 이동하지 못했습니다. 입장 권한과 맵 설정을 확인해 주세요.'); }
   }
+  function resizeMini(s, area, d) {
+    if (!s.collapsed || !Number.isFinite(d.width) || !Number.isFinite(d.height) || d.width <= 0 || d.height <= 0) return false;
+    var widthRatio = (100 - area.left - area.right) / 100;
+    var heightRatio = (100 - area.top - area.bottom) / 100;
+    var width = d.width / widthRatio, height = d.height / heightRatio;
+    if (width < 240 || width > 20000 || height < 160 || height > 12000) return false;
+    var anchor = CONFIG.miniAnchor;
+    // 실제 크기가 이미 일치하면 위젯 재생성 반복을 피합니다.
+    if (s.miniAnchored && Math.abs(d.width - anchor.width) <= 1 && Math.abs(d.height - anchor.height) <= 1) return false;
+    var left = Math.min(anchor.left, width - anchor.width - 8);
+    var bottom = Math.min(anchor.bottom, height - anchor.height);
+    var next = {left:left / width * 100, right:(width - left - anchor.width) / width * 100,
+      top:(height - bottom - anchor.height) / height * 100, bottom:bottom / height * 100};
+    var previous = s.miniArea;
+    s.miniArea = next;
+    if (!show(s)) { s.miniArea = previous; return false; }
+    s.miniAnchored = true;
+    return true;
+  }
   function show(s) {
     if (!destroy(s)) return false;
-    var u = s.collapsed ? CONFIG.minimized : CONFIG.ui;
+    var u = s.collapsed ? (s.miniArea || CONFIG.minimized) : CONFIG.ui;
     var w = s.player.showWidgetResponsive(s.collapsed ? 'wishlist-mini.html' : 'wishlist.html', u.top, u.right, u.bottom, u.left);
     s.widget = w;
     w.onMessage.Add(function(p, d) {
       if (p !== s.player || s.widget !== w || !record(d)) return;
-      if (d.type === 'ready') { s.ready = true; send(s); return; }
-      if (d.type === 'toggle') { s.collapsed = !s.collapsed; if (!show(s)) send(s); return; }
+      if (d.type === 'ready') { s.ready = true; if (resizeMini(s, u, d)) return; send(s); return; }
+      if (d.type === 'miniResize') { if (!resizeMini(s, u, d)) send(s); return; }
+      if (d.type === 'toggle') { s.collapsed = !s.collapsed; s.miniAnchored = false; if (!show(s)) send(s); return; }
       try {
         var progress = read(p), data = progress.data;
         if (d.type === 'sort' && ['recent','number','name'].indexOf(d.sort) >= 0) { data.sort = d.sort; save(p, progress); send(s); return; }
