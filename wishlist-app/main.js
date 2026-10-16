@@ -3,7 +3,8 @@ var CONFIG = {
   mapKey: 'booth-map-01',
   maxItems: 200,
   ui: { top: 10, right: 2, bottom: 22, left: 66 },
-  minimized: { align: 'middleright', width: 64, height: 64 },
+  // 좌측 채팅창 우측의 하단 영역 (화면 대비 % 여백)
+  minimized: { top: 76, right: 64, bottom: 12, left: 28 },
   // 선택: 번호별 도착 위치를 지정하면 최초 상호작용 위치 대신 사용합니다.
   destinations: {} // 예: '101': { x: 12, y: 8 }
 };
@@ -55,7 +56,7 @@ var CONFIG = {
     var u = CONFIG.ui;
     var mini = CONFIG.minimized;
     var w = s.collapsed
-      ? s.player.showWidget('wishlist-mini.html', mini.align, mini.width, mini.height)
+      ? s.player.showWidgetResponsive('wishlist-mini.html', mini.top, mini.right, mini.bottom, mini.left)
       : s.player.showWidgetResponsive('wishlist.html', u.top, u.right, u.bottom, u.left);
     s.widget = w;
     w.onMessage.Add(function(p, d) {
