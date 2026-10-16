@@ -1,6 +1,8 @@
 /* 노멀 앱: 동일 스페이스 모든 맵에 적용. 사이드바 앱: 스페이스에 적용. */
 var CONFIG = {
   maxItems: 200,
+  // 원격 맵의 이름을 미리 지정할 때 사용. 예: 'mapHashID': '제2전시장'
+  mapNames: {},
   // 이전 단일 맵 기록의 키. 원래 맵 ID를 아는 경우 legacyMapId를 입력하면 이동도 유지됩니다.
   legacyMapKey: 'booth-map-01',
   legacyMapId: '',
@@ -21,6 +23,21 @@ var CONFIG = {
   function target(v) { return record(v) && hash(v.mapId) && (v.location !== undefined ? typeof v.location === 'string' && v.location.trim().length > 0 && v.location.length <= 100 : coordinates(v)); }
   function position(v) { return coordinates(v) && v.x < Map.width && v.y < Map.height; }
   function currentMap() { if (!hash(App.mapHashID) || !hash(App.spaceHashID)) throw Error('map identity'); return App.mapHashID; }
+  function validName(v) { return typeof v === 'string' && v.trim().length > 0 && v.length <= 100; }
+  function mapName(mapId, stored) {
+    var configured = CONFIG.mapNames[mapId];
+    if (validName(configured)) return configured.trim();
+    if (mapId === App.mapHashID && validName(Map.name)) return Map.name.trim();
+    return validName(stored) ? stored.trim() : '';
+  }
+  function refreshMapNames(p) {
+    var progress = read(p), name = mapName(App.mapHashID), changed = false;
+    if (!name) return;
+    progress.data.items.forEach(function(i) {
+      if (i.mapId === App.mapHashID && i.mapName !== name) { i.mapName = name; changed = true; }
+    });
+    if (changed) save(p, progress);
+  }
   function find(p) { return sessions.filter(function(s) { return s.player === p; })[0]; }
   function tell(p, t) { p.sendMessage('[위시리스트] ' + t); }
   function read(p) {
@@ -49,6 +66,7 @@ var CONFIG = {
       if (!record(i) || typeof i.number !== 'string' || !/^\d{1,12}$/.test(i.number) || typeof i.name !== 'string' || !i.name.trim() || i.name.length > 100 || !(target(i) || i.mapId === '' && coordinates(i)) || i.id !== (i.mapId || 'legacy') + ':' + i.number || seen[i.id]) throw Error('item');
       seen[i.id] = true;
     });
+    data.items.forEach(function(i) { if (i.mapName !== undefined && !validName(i.mapName)) throw Error('map name'); });
     if (data.pending !== undefined && (!target(data.pending) || typeof data.pending.id !== 'string' || !Number.isFinite(data.pending.expiresAt))) throw Error('pending');
     return {root:root, data:data};
   }
@@ -64,7 +82,7 @@ var CONFIG = {
     try {
       var data = read(s.player).data;
       payload.items = data.items.map(function(i) {
-        return {id:i.id, number:i.number, name:i.name, mapId:i.mapId, otherMap:!!i.mapId && i.mapId !== App.mapHashID, needsRegistration:!i.mapId};
+        return {id:i.id, number:i.number, name:i.name, mapId:i.mapId, mapName:mapName(i.mapId, i.mapName) || (i.mapId ? '맵 이름 확인 필요' : '맵 정보 없음'), otherMap:!!i.mapId && i.mapId !== App.mapHashID, needsRegistration:!i.mapId};
       });
       payload.sort = data.sort;
     } catch(e) { payload.error = '기록을 읽지 못했습니다. 관리자에게 문의하세요.'; }
@@ -146,6 +164,7 @@ var CONFIG = {
     var s = find(p);
     if (!s) { s = {player:p, collapsed:false, ready:false, widget:null}; sessions.push(s); }
     try { finishTransfer(p); } catch(e) { tell(p, '이동 기록을 처리하지 못했습니다. !wishlist-cancel로 취소하거나 관리자에게 문의하세요.'); }
+    try { refreshMapNames(p); } catch(e) { tell(p, '맵 이름 갱신을 저장하지 못했습니다.'); }
     try { if (!show(s)) send(s); } catch(e) { tell(p, '창을 열지 못했습니다. !wishlist로 다시 열어 주세요.'); }
   }
   App.onJoinPlayer.Add(join);
@@ -180,7 +199,10 @@ var CONFIG = {
       var progress = read(p), items = progress.data.items, id = destination.mapId + ':' + number;
       var existing = items.filter(function(i) { return i.id === id; })[0];
       if (!existing && items.length >= CONFIG.maxItems) { tell(p, '최대 ' + CONFIG.maxItems + '개까지 저장할 수 있습니다.'); return; }
+      if (source.mapName !== undefined && !validName(source.mapName)) throw Error('map name');
       var item = {id:id, number:number, name:name.trim(), mapId:destination.mapId};
+      var destinationName = mapName(destination.mapId, source.mapName || (existing && existing.mapName));
+      if (destinationName) item.mapName = destinationName;
       if (destination.location) item.location = destination.location;
       else { item.x = destination.x; item.y = destination.y; }
       if (existing) items[items.indexOf(existing)] = item; else items.push(item);
