@@ -26,7 +26,7 @@
 ## 설치
 
 1. ZIP을 내려받아 압축을 풉니다.
-2. **운영 전** `main.js` 상단의 `drawMapId`를 실제 추첨 맵의 hash ID로 교체합니다. `https://zep.us/play/스페이스ID/맵ID`에서 맵 ID를 사용하며, 스페이스 ID가 아닙니다. 미설정 상태에서는 추첨하지 않습니다.
+2. **운영 전** `drawMapId`를 실제 추첨 맵의 런타임 ID로 설정합니다. `https://zep.us/play/rbbq9p` 같은 단축 링크의 코드를 맵 ID로 추정하지 마세요. 먼저 미설정 상태의 앱을 설치한 뒤, 추첨할 맵에서 관리자 채팅 `!경품맵확인`을 입력합니다. 개인 메시지로 받은 `drawMapId: "실제값"`을 `main.js` 상단에 복사하고 ZIP을 다시 올려 같은 앱을 업데이트하세요. 미설정 상태에서는 맵 확인만 가능하며 추첨은 차단됩니다.
 3. **맵 에디터 → 오브젝트설치 → 개발자 기능 → ZEP Script 상호작용**을 선택하여 경품 위치에 배치합니다. 오브젝트 설정에 **Number: `1001`**, **Value: `prize_draw`**를 입력하고 저장합니다. 코드 기본값 `interactionMode: "editor"`, `objectNumber: "1001"`, `objectValue: "prize_draw"`와 일치시킵니다. 이 모드에서는 key나 레이어/좌표 입력이 필요 없습니다. 이미지는 맵 에디터에서 선택하며 스크립트가 자동 배치하지 않습니다.
 4. `eventId`, `totalPrizes`, `ranks`를 확정합니다. `totalPrizes`는 모든 등수의 `total` 합계와 같아야 합니다. 각 등수의 `dailyLimit`가 하루 상한이며, 0이면 해당 등수를 배정하지 않습니다.
 5. 수정한 `main.js`를 ZIP의 **최상위**에 넣어 다시 압축합니다. README와 tests는 앱 업로드에 필요하지 않습니다.
@@ -39,6 +39,18 @@ CLI로 설치 ZIP을 만들 때(압축을 푼 디렉터리에서):
 ```sh
 python3 -c 'from zipfile import ZipFile; z=ZipFile("upload.zip","w"); z.write("main.js"); z.close()'
 ```
+
+## 단축 링크에서 맵 ID 확인
+
+접속 링크는 `https://zep.us/play/rbbq9p`처럼 짧을 수 있습니다. URL을 분리해 내부 맵 ID를 얻는 방식은 사용하지 않습니다. 스크립트의 `App.mapHashID`를 직접 조회합니다.
+
+1. `drawMapId`를 기본 미설정 값으로 두고 이 앱을 업로드·설치합니다.
+2. 실제 추첨할 맵으로 이동한 뒤 관리자/소유자 계정으로 `!경품맵확인`을 입력합니다.
+3. 개인 메시지에 표시된 `drawMapId: "..."`를 코드에 복사합니다. `spaceHashID`와 혼동하지 마세요.
+4. 수정한 `main.js`를 ZIP으로 만들어 **같은 앱을 업데이트**합니다.
+5. 맵 저장·앱 실행 후 오브젝트로 테스트합니다.
+
+맵 확인 명령은 설정 전이나 추첨 점검 중에도 동작하며 스토리지·재고·당첨 기록을 변경하지 않습니다. 현재 맵을 자동으로 추첨 맵에 등록하지도 않습니다. 기존 운영 중인 앱은 현재 `drawMapId`를 그대로 유지하세요. 조회한 다른 맵 ID로 변경하면 기존 설정 지문과 달라져 원장 접근이 차단됩니다.
 
 ## 맵 에디터 입력값
 
@@ -69,6 +81,7 @@ Number 또는 Value를 바꾸면 스크립트 설정도 같은 값으로 변경�
 | 지정한 ZEP Script 상호작용 오브젝트에 접촉 | 해당 유저에게 무작위 경품 추첨 |
 | `!추첨` 또는 사이드바 앱 클릭 | 오브젝트 참여 방법 안내(추첨 안 함) |
 | `!경품도움말` | 사용 안내 |
+| `!경품맵확인` | 현재 런타임 맵/스페이스 ID 확인, 관리자 전용·설정 전 사용 가능 |
 | `!경품현황` | 등수별 전체/오늘 당첨 수 조회, 관리자 전용 |
 | `!당첨목록 1` | 10명씩 현재 회차 당첨 원장 조회, 관리자 전용(페이지 변경 가능) |
 | `!경품중지` | 추첨을 중지하고 상태를 저장, 관리자 전용 |
@@ -133,7 +146,7 @@ Node.js 18 이상에서 외부 패키지 없이:
 node tests/prize-draw.test.cjs
 ```
 
-36개 테스트: 전체 1,000개 정확 소진, 등수별 일일 상한, 100개 동시 요청, 중복 계정/재시작, 한국시간 자정, 한도 0, 가중치 경계, 맵/로그인 제한, 관리자 권한, 타 앱 데이터 보존, JSON/원장 손상, 운영 중 설정 변경, 설정 합계, 쓰기 실패/누락, 타임아웃, 저장 직후 이전, 시계 역행, 용량 한도, 지정 오브젝트 key/좌표 필터, 채팅/Q 우회 차단, 중지/시작 상태 유지, 초기화 전 중지 필수, 확인 코드 만료·오타·재사용·타 관리자 제한, 회차 증가·재참여, 원장 변경 시 초기화 거부, 대기열 순서와 권한 재검사, 이전 v1 원장 호환, 개발자 오브젝트 type/Number/Value 검사, editor 모드와 F 이벤트 분리, 이전 key 모드 호환.
+38개 테스트: 전체 1,000개 정확 소진, 등수별 일일 상한, 100개 동시 요청, 중복 계정/재시작, 한국시간 자정, 한도 0, 가중치 경계, 맵/로그인 제한, 관리자 권한, 타 앱 데이터 보존, JSON/원장 손상, 운영 중 설정 변경, 설정 합계, 쓰기 실패/누락, 타임아웃, 저장 직후 이전, 시계 역행, 용량 한도, 지정 오브젝트 key/좌표 필터, 채팅/Q 우회 차단, 중지/시작 상태 유지, 초기화 전 중지 필수, 확인 코드 만료·오타·재사용·타 관리자 제한, 회차 증가·재참여, 원장 변경 시 초기화 거부, 대기열 순서와 권한 재검사, 이전 v1 원장 호환, 개발자 오브젝트 type/Number/Value 검사, editor 모드와 F 이벤트 분리, 이전 key 모드 호환, 맵 미설정 상태의 런타임 ID 조회·권한 검사·저장 미변경.
 
 이는 ZEP API 모형을 사용한 자동 테스트입니다. 실제 ZEP 설치·개발자 오브젝트 접촉/모바일 상호작용·저장 지속성·서버 이전·스토리지 용량은 이 환경에서 검증하지 않았습니다. 운영 전 테스트 스페이스에서 확인하세요. 1등 `total: 2, dailyLimit: 1` 같은 작은 수량으로 당일 추가 배정 차단, 앱 재시작 후 결과 유지, 관리자 중지→초기화→시작과 새 회차 재참여를 확인하세요. 모바일에서도 지정 오브젝트에 접근/접촉하여 이벤트가 발생하는지 확인하세요.
 
@@ -141,6 +154,7 @@ node tests/prize-draw.test.cjs
 
 - [개발자 기능의 ZEP Script 상호작용 오브젝트 설정](https://docs-kr.zep.us/creator/reference/script-object-interaction)
 - [ZEP Storage](https://docs-kr.zep.us/zep-script-api/zepscriptapi/scriptapp/storage)
+- [런타임 맵/스페이스 ID](https://docs-kr.zep.us/zep-script-api/zepscriptapi/scriptapp/field)
 - [플레이어 필드: emailHash, isGuest, role](https://docs.zep.us/zep-script/zep-script-api/scriptplayer/field)
 - [오브젝트 F 상호작용·채팅 이벤트](https://docs.zep.us/zep-script/zep-script-api/scriptapp/event-listeners)
 - [개인 메시지·확인 창](https://docs.zep.us/zep-script/zep-script-api/scriptplayer/methods)

@@ -1,7 +1,7 @@
 // ZEP 경품 추첨 전용 앱. 다른 앱 main.js에 덮어쓰지 마세요.
 var PRIZE_CONFIG = {
     eventId: "prize-event-2026-v1",
-    drawMapId: "REPLACE_WITH_MAP_HASH_ID", // URL의 맵 ID로 교체 필수
+    drawMapId: "REPLACE_WITH_MAP_HASH_ID", // 앱 설치 후 관리자 !경품맵확인 결과로 교체 (단축 URL 코드 아님)
     interactionMode: "editor", // 기본: 개발자 기능 > ZEP Script 상호작용 오브젝트
     objectNumber: "1001",      // 오브젝트 설정 Number (obj.text)
     objectValue: "prize_draw", // 오브젝트 설정 Value (obj.param1)
@@ -217,6 +217,15 @@ var PRIZE_CONFIG = {
     }
     App.onSay.Add(function (p, text) {
         text = String(text).trim();
+        // 최초 설치/맵 설정 전에도 조회 가능. 스토리지와 추첨 상태는 변경하지 않습니다.
+        if (text === "!경품맵확인") {
+            if (!(p.role >= 3000)) { tell(p, "관리자 전용 명령입니다."); return; }
+            if (typeof App.mapHashID !== "string" || !App.mapHashID) { tell(p, "현재 맵 ID를 확인할 수 없습니다."); return; }
+            tell(p, "현재 mapHashID: " + App.mapHashID + "\nspaceHashID: " + String(App.spaceHashID || "확인 불가") +
+                "\nmain.js 설정: drawMapId: " + JSON.stringify(App.mapHashID) +
+                "\n단축 링크의 코드를 맵 ID로 추정하지 마세요. 현재 추첨 맵에서 확인한 값을 사용하세요.");
+            return;
+        }
         if (text === "!추첨") tell(p, "맵의 경품 상호작용 오브젝트를 이용해 참여해주세요.");
         else if (text === "!경품현황") enqueue(p, "status");
         else if (text === "!경품중지") enqueue(p, "pause");
@@ -225,7 +234,7 @@ var PRIZE_CONFIG = {
         else if (/^!경품초기화\s+\S+$/.test(text)) enqueue(p, "reset", 1, text.split(/\s+/)[1]);
         else if (/^!당첨목록(?:\s+[1-9][0-9]*)?$/.test(text)) enqueue(p, "winners", Number(text.split(/\s+/)[1] || 1));
         else if (text === "!경품도움말") tell(p, "경품 상호작용 오브젝트 이용: 회차당 계정별 1회 당첨\n" +
-            "관리자: !경품현황 / !당첨목록 1 / !경품중지 / !경품시작 / !경품초기화 → 확인 코드 입력");
+            "관리자: !경품맵확인 / !경품현황 / !당첨목록 1 / !경품중지 / !경품시작 / !경품초기화 → 확인 코드 입력");
     });
     // 맵 에디터 > 오브젝트설치 > 개발자 기능 > ZEP Script 상호작용.
     // 공식 가이드의 onObjectTouched(sender, x, y, tileID, obj) 연결 방식.

@@ -261,3 +261,16 @@ test('이전 key 모드는 명시적으로 선택하면 정상 동작', () => {
     const h = setup({ config: { interactionMode: 'key' } }); h.draw(h.user()); h.flush(); assert.equal(h.writes, 0);
     h.listeners.onTriggerObject(h.user(), 3, 10, 10, 'prize_draw'); h.flush(); assert.equal(h.state.winners.length, 1);
 });
+test('맵 미설정 상태에서도 관리자 맵 확인은 실제 런타임 ID를 읽고 저장하지 않음', () => {
+    const h = setup({ config: { drawMapId: 'REPLACE_WITH_MAP_HASH_ID' } });
+    h.App.spaceHashID = 'space-real'; h.App.mapHashID = 'map-real';
+    const a = h.user(99, { role: 3000 }); command(h, a, '!경품맵확인');
+    assert.match(a.messages.join(''), /drawMapId: "map-real"/);
+    assert.match(a.messages.join(''), /space-real/); assert.equal(h.writes, 0); assert.equal(h.callbacks.length, 0);
+    assert.equal(h.ctx.PRIZE_CONFIG.drawMapId, 'REPLACE_WITH_MAP_HASH_ID');
+});
+test('맵 확인은 일반 유저 거부, 런타임 ID가 없으면 추정하지 않음', () => {
+    const h = setup(), p = h.user(); command(h, p, '!경품맵확인'); assert.match(p.messages.join(''), /관리자 전용/);
+    const a = h.user(99, { role: 3001 }); h.App.mapHashID = undefined;
+    command(h, a, '!경품맵확인'); assert.match(a.messages.join(''), /확인할 수 없습니다/); assert.equal(h.writes, 0);
+});
