@@ -12,7 +12,7 @@ function setup(options = {}) {
         setStorage(s) { writes++; if (options.throwWrite) throw Error('write failed'); if (!options.dropWrite) storage = s; },
         addOnKeyDown(key, fn) { listeners.key = fn; }
     };
-    ['onSay', 'onSidebarTouched', 'onJoinPlayer', 'onUpdate', 'onDestroy', 'onMigrationStart'].forEach(k => {
+    ['onSay', 'onTriggerObject', 'onSidebarTouched', 'onJoinPlayer', 'onUpdate', 'onDestroy', 'onMigrationStart'].forEach(k => {
         App[k] = { Add(fn) { listeners[k] = fn; } };
     });
     class Clock extends Date { static now() { return now; } }
@@ -30,7 +30,7 @@ function setup(options = {}) {
     }
     function settle() { for (let i = 0; i < 110; i++) { flush(); listeners.onUpdate(0.02); } flush(); }
     return { App, listeners, callbacks, user, flush, settle, ctx,
-        draw(p) { listeners.onSay(p, '!추첨'); },
+        draw(p) { listeners.onTriggerObject(p, 3, 10, 10, 'prize_draw'); },
         get storage() { return storage; }, set storage(s) { storage = s; },
         get state() { return JSON.parse(storage).zepPrizeDrawV1; }, get writes() { return writes; },
         setNow(value) { now = Date.parse(value); }
@@ -140,9 +140,105 @@ test('서버 날짜 역행은 추가 추첨 중지', () => {
     const h = setup(); h.draw(h.user()); h.flush(); h.setNow('2026-10-18T03:00:00Z');
     h.draw(h.user(2)); h.flush(); assert.equal(h.writes, 1);
 });
-test('모바일 사이드바와 Q키로 참여 가능', () => {
-    const h = setup(); h.listeners.onSidebarTouched(h.user()); h.flush(); h.listeners.key(h.user(2)); h.flush();
-    assert.equal(h.state.winners.length, 2);
+test('추첨은 오브젝트만 허용; 채팅/사이드바/Q 우회 차단', () => {
+    const h = setup(); h.listeners.onSidebarTouched(h.user()); h.listeners.onSay(h.user(), '!추첨'); h.flush();
+    assert.equal(h.writes, 0); assert.equal(h.listeners.key, undefined);
+    h.draw(h.user()); h.flush(); assert.equal(h.state.winners.length, 1);
+});
+
+function command(h, admin, text) { h.listeners.onSay(admin, text); h.settle(); }
+function resetCode(h, admin) {
+    command(h, admin, '!경품초기화');
+    const message = admin.messages[admin.messages.length - 1];
+    const match = message.match(/60초 안에 !경품초기화 (\S+) 입력/);
+    assert.ok(match, message); return match[1];
+}
+test('다른 key 오브젝트와 상호작용해도 추첨되지 않음', () => {
+    const h = setup(); h.listeners.onTriggerObject(h.user(), 3, 10, 10, 'other'); h.flush();
+    assert.equal(h.writes, 0); assert.equal(h.callbacks.length, 0);
+});
+test('좌표 모드는 레이어와 x/y가 모두 일치할 때만 추첨', () => {
+    const h = setup({ config: { objectPosition: { layer: 5, x: 4, y: 7 } } });
+    for (const coords of [[3,4,7], [5,5,7], [5,4,8]]) h.listeners.onTriggerObject(h.user(), ...coords, 'prize_draw');
+    h.flush(); assert.equal(h.writes, 0);
+    h.listeners.onTriggerObject(h.user(), 5, 4, 7, undefined); h.flush(); assert.equal(h.state.winners.length, 1);
+});
+test('중지 상태는 앱 재시작 후에도 유지, 시작 후 재개', () => {
+    const h = setup(), admin = h.user(99, { role: 3000 });
+    command(h, admin, '!경품중지'); assert.equal(h.state.paused, true);
+    const next = setup({ storage: h.storage }); next.draw(next.user()); next.flush(); assert.equal(next.state.winners.length, 0);
+    command(next, admin, '!경품시작'); next.draw(next.user()); next.flush(); assert.equal(next.state.winners.length, 1);
+});
+test('일반 유저/스태프는 관리자 중지·시작·초기화 불가', () => {
+    const h = setup();
+    for (const role of [0, 1000, 2000]) for (const cmd of ['!경품중지', '!경품시작', '!경품초기화', '!경품초기화 ABC']) {
+        const p = h.user(role, { role }); command(h, p, cmd); assert.match(p.messages.join(''), /관리자 전용/);
+    }
+    assert.equal(h.writes, 0);
+});
+test('추첨 진행 중에는 초기화 준비 불가', () => {
+    const h = setup(), a = h.user(99, { role: 3001 });
+    command(h, a, '!경품초기화'); assert.match(a.messages.join(''), /먼저 !경품중지/); assert.equal(h.writes, 0);
+});
+test('정상 초기화는 재고/당첨자/일일 수량 초기화, 회차 증가, 중지 유지, 타 데이터 보존', () => {
+    const h = setup({ config: small, storage: JSON.stringify({ other: { value: 42 } }) });
+    const p = h.user(), a = h.user(99, { role: 3000 }); h.draw(p); h.flush();
+    const oldReceipt = p.messages.join('');
+    command(h, a, '!경품중지'); const code = resetCode(h, a);
+    assert.equal(h.state.winners.length, 1); // 준비만으로는 지우지 않음
+    command(h, a, '!경품초기화 ' + code);
+    assert.equal(h.state.winners.length, 0); assert.equal(h.state.revision, 0); assert.equal(h.state.round, 2);
+    assert.equal(h.state.paused, true); assert.equal(h.state.lastReset.previousCount, 1);
+    assert.equal(JSON.parse(h.storage).other.value, 42);
+    h.draw(p); h.flush(); assert.equal(h.state.winners.length, 0);
+    command(h, a, '!경품시작'); h.draw(p); h.flush();
+    assert.equal(h.state.winners.length, 1); assert.match(oldReceipt, /R1-1/); assert.match(p.messages.at(-1), /R2-1/);
+});
+test('확인 코드 오타나 60초 만료는 원장을 지우지 않음', () => {
+    for (const expired of [false, true]) {
+        const h = setup(), a = h.user(99, { role: 3000 }); h.draw(h.user()); h.flush();
+        command(h, a, '!경품중지'); const code = resetCode(h, a);
+        if (expired) h.setNow('2026-10-19T03:01:00Z');
+        command(h, a, '!경품초기화 ' + (expired ? code : 'WRONG'));
+        assert.equal(h.state.winners.length, 1); assert.equal(h.state.round, 1);
+    }
+});
+test('다른 관리자의 코드는 사용할 수 없고 재시작하면 코드도 무효', () => {
+    const h = setup(), a = h.user(99, { role: 3000 }), b = h.user(100, { role: 3000 });
+    h.draw(h.user()); h.flush(); command(h, a, '!경품중지'); const code = resetCode(h, a);
+    command(h, b, '!경품초기화 ' + code); assert.equal(h.state.winners.length, 1);
+    const next = setup({ storage: h.storage }); command(next, a, '!경품초기화 ' + code);
+    assert.equal(next.state.winners.length, 1);
+});
+test('초기화 코드 발급 후 상태 변경 또는 사용한 코드는 재사용 불가', () => {
+    const h = setup(), a = h.user(99, { role: 3000 }); h.draw(h.user()); h.flush();
+    command(h, a, '!경품중지'); const stale = resetCode(h, a);
+    command(h, a, '!경품시작'); command(h, a, '!경품중지');
+    command(h, a, '!경품초기화 ' + stale); assert.equal(h.state.winners.length, 1);
+    const code = resetCode(h, a); command(h, a, '!경품초기화 ' + code); assert.equal(h.state.round, 2);
+    command(h, a, '!경품초기화 ' + code); assert.equal(h.state.round, 2);
+});
+test('확인 코드 발급 후 원장 변동 시 초기화 거부', () => {
+    const h = setup(), a = h.user(99, { role: 3000 }); command(h, a, '!경품중지'); const code = resetCode(h, a);
+    const root = JSON.parse(h.storage); root.zepPrizeDrawV1.lastReset = { at: 0, by: 'other', previousCount: 0 };
+    h.storage = JSON.stringify(root); command(h, a, '!경품초기화 ' + code); assert.equal(h.state.round, 1);
+});
+test('추첨 요청과 중지 명령이 동시에 대기해도 중지 이후 요청은 배정 안 함', () => {
+    const h = setup(), a = h.user(99, { role: 3000 });
+    h.draw(h.user(1)); h.listeners.onSay(a, '!경품중지'); h.draw(h.user(2)); h.settle();
+    assert.equal(h.state.winners.length, 1); assert.equal(h.state.paused, true);
+});
+test('큐 대기 중 관리자 권한이 회수되면 변경 명령 거부', () => {
+    const h = setup(), a = h.user(99, { role: 3000 }); h.draw(h.user());
+    h.listeners.onSay(a, '!경품중지'); a.role = 0; h.settle();
+    assert.equal(h.state.paused, false); assert.equal(h.writes, 1);
+});
+test('이전 버전 원장은 보존하고 round/paused 기본값만 추가', () => {
+    const h = setup(); h.draw(h.user()); h.flush(); const root = JSON.parse(h.storage);
+    delete root.zepPrizeDrawV1.round; delete root.zepPrizeDrawV1.paused;
+    const next = setup({ storage: JSON.stringify(root) }); const p = next.user(); next.draw(p); next.flush();
+    assert.equal(next.writes, 0); assert.match(p.messages.join(''), /이미 참여/);
+    next.draw(next.user(2)); next.flush(); assert.equal(next.state.winners.length, 2); assert.equal(next.state.round, 1);
 });
 test('용량 안전 한도 초과 시 쓰기 전에 중단', () => {
     const h = setup({ config: { maxStorageBytes: 10 } }); h.draw(h.user()); h.flush(); assert.equal(h.writes, 0);

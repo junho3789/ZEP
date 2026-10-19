@@ -2,6 +2,10 @@
 var PRIZE_CONFIG = {
     eventId: "prize-event-2026-v1",
     drawMapId: "REPLACE_WITH_MAP_HASH_ID", // URL의 맵 ID로 교체 필수
+    objectKey: "prize_draw", // 맵 에디터의 ZEP Script 상호작용 오브젝트 key
+    // key 설정이 어려운 경우 { layer: 3, x: 10, y: 10 }처럼 지정.
+    // 좌표 지정 시 key 대신 이 레이어/좌표만 검사합니다(상단 오브젝트 layer: 5).
+    objectPosition: null,
     totalPrizes: 1000,
     ranks: [
         { id: "rank1", name: "1등", total: 6, dailyLimit: 2 },
@@ -20,6 +24,7 @@ var PRIZE_CONFIG = {
     "use strict";
     var KEY = "zepPrizeDrawV1", queue = [], busy = false, stopped = false;
     var pending = Object.create(null), elapsed = 0, token = 0;
+    var resetTickets = Object.create(null), ticketSerial = 0;
     var hasOwn = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
     function object(o) { return o && typeof o === "object" && !Array.isArray(o); }
     function integer(n) { return typeof n === "number" && isFinite(n) && Math.floor(n) === n && n >= 0; }
@@ -31,6 +36,10 @@ var PRIZE_CONFIG = {
     }
     function checkConfig() {
         if (!C.eventId || !C.drawMapId || C.drawMapId === "REPLACE_WITH_MAP_HASH_ID") throw Error("eventId와 drawMapId를 설정하세요.");
+        if (C.objectPosition !== null) {
+            if (!object(C.objectPosition) || (C.objectPosition.layer !== 3 && C.objectPosition.layer !== 5) ||
+                !integer(C.objectPosition.x) || !integer(C.objectPosition.y)) throw Error("오브젝트 좌표 설정 오류");
+        } else if (typeof C.objectKey !== "string" || !C.objectKey) throw Error("오브젝트 key를 설정하세요.");
         if (!integer(C.totalPrizes) || C.totalPrizes < 1 || !Array.isArray(C.ranks) || !C.ranks.length) throw Error("총수량/등수 설정 오류");
         var sum = 0, ids = Object.create(null);
         C.ranks.forEach(function (r) {
@@ -48,9 +57,15 @@ var PRIZE_CONFIG = {
         var root = App.storage == null || App.storage === "" ? {} : JSON.parse(App.storage);
         if (!object(root)) throw Error("스토리지 형식 오류");
         var state;
-        if (!hasOwn(root, KEY)) state = { version: 1, config: signature(), revision: 0, winners: [] };
+        if (!hasOwn(root, KEY)) state = { version: 1, config: signature(), revision: 0, winners: [], round: 1, paused: false };
         else state = root[KEY];
+        // 기존 v1 당첨 원장은 그대로 유지합니다.
+        if (object(state)) {
+            if (!hasOwn(state, "round")) state.round = 1;
+            if (!hasOwn(state, "paused")) state.paused = false;
+        }
         if (!object(state) || state.version !== 1 || state.config !== signature() ||
+            !integer(state.round) || state.round < 1 || typeof state.paused !== "boolean" ||
             !integer(state.revision) || !Array.isArray(state.winners) || state.revision !== state.winners.length ||
             state.winners.length > C.totalPrizes) throw Error("설정 변경 또는 당첨 기록 오류: 관리자 확인 필요");
         var totals = Object.create(null), daily = Object.create(null), people = Object.create(null);
@@ -73,11 +88,12 @@ var PRIZE_CONFIG = {
     function rankById(id) {
         return C.ranks.filter(function (r) { return r.id === id; })[0];
     }
-    function result(w) { return rankById(w.rank).name + " 당첨! 당첨번호 " + C.eventId + "-" + w.no + " (" + w.day + ")"; }
+    function result(w, round) { return rankById(w.rank).name + " 당첨! 당첨번호 " + C.eventId + "-R" + round + "-" + w.no + " (" + w.day + ")"; }
     function fail(message) {
         stopped = true; token++;
         queue.forEach(function (job) { tell(job.player, message + " 추첨을 중지했습니다. 관리자에게 문의하세요."); });
         queue = []; pending = Object.create(null); busy = false;
+        resetTickets = Object.create(null);
     }
     function finish(job, message) {
         tell(job.player, message);
@@ -90,6 +106,17 @@ var PRIZE_CONFIG = {
             try { fn(); } catch (_) { fail("저장 또는 기록 확인 오류입니다."); }
         };
     }
+    function save(job, id, data, message) {
+        data.root[KEY] = data.state;
+        var serialized = JSON.stringify(data.root);
+        if (unescape(encodeURIComponent(serialized)).length > C.maxStorageBytes) throw Error("저장 안전 한도 초과");
+        App.setStorage(serialized);
+        App.getStorage(guarded(id, function () {
+            var saved = read();
+            if (JSON.stringify(saved.state) !== JSON.stringify(data.state)) throw Error("저장 재조회 불일치");
+            finish(job, message);
+        }));
+    }
     function process() {
         if (busy || stopped || !queue.length) return;
         busy = true; elapsed = 0;
@@ -97,12 +124,17 @@ var PRIZE_CONFIG = {
         try {
             App.getStorage(guarded(id, function () {
                 var data = read(), today = day(Date.now());
+                // 큐 대기 중 권한 변경도 반영합니다.
+                if (job.kind !== "draw" && !(job.player.role >= 3000)) { finish(job, "관리자 전용 명령입니다."); return; }
                 if (job.kind === "status") {
-                    var lines = [today + " (한국시간) / 총 당첨 " + data.state.winners.length + "/" + C.totalPrizes];
+                    var lines = [today + " (한국시간) / 총 당첨 " + data.state.winners.length + "/" + C.totalPrizes,
+                        "회차 R" + data.state.round + " / " + (data.state.paused ? "추첨 중지" : "추첨 진행")];
                     C.ranks.forEach(function (r) {
                         lines.push(r.name + ": 전체 " + data.totals[r.id] + "/" + r.total +
                             ", 오늘 " + (data.daily[today + ":" + r.id] || 0) + "/" + r.dailyLimit);
                     });
+                    if (data.state.lastReset) lines.push("최근 초기화: " + new Date(data.state.lastReset.at).toISOString() +
+                        " / 이전 당첨 " + data.state.lastReset.previousCount + "건 / 관리자 ID " + data.state.lastReset.by);
                     finish(job, lines.join("\n")); return;
                 }
                 if (job.kind === "winners") {
@@ -110,10 +142,34 @@ var PRIZE_CONFIG = {
                     var rows = data.state.winners.slice(start, start + 10).map(function (w) {
                         return "#" + w.no + " | " + rankById(w.rank).name + " | " + w.day + " | 계정해시 " + w.user;
                     });
-                    finish(job, "당첨 기록 " + job.page + "페이지\n" + (rows.join("\n") || "기록 없음")); return;
+                    finish(job, "R" + data.state.round + " 당첨 기록 " + job.page + "페이지\n" + (rows.join("\n") || "기록 없음")); return;
                 }
+                if (job.kind === "pause" || job.kind === "resume") {
+                    data.state.paused = job.kind === "pause";
+                    resetTickets = Object.create(null);
+                    save(job, id, data, data.state.paused ? "추첨을 중지했습니다. !경품초기화 또는 !경품시작" : "추첨을 시작했습니다."); return;
+                }
+                if (job.kind === "resetPrepare") {
+                    if (!data.state.paused) { finish(job, "먼저 !경품중지 후 초기화하세요."); return; }
+                    var code = Date.now().toString(36) + "-" + (++ticketSerial).toString(36);
+                    resetTickets[String(job.player.id)] = { code: code, expires: Date.now() + 60000, snapshot: JSON.stringify(data.state) };
+                    finish(job, "초기화 시 총 재고·오늘 당첨 수·당첨자 기록·중복 당첨 제한이 모두 초기화됩니다. 기존 원장은 별도 보관하세요.\n" +
+                        "60초 안에 !경품초기화 " + code + " 입력. 초기화 후에도 중지 상태입니다."); return;
+                }
+                if (job.kind === "reset") {
+                    var ticket = resetTickets[String(job.player.id)];
+                    delete resetTickets[String(job.player.id)];
+                    if (!data.state.paused || !ticket || ticket.code !== job.argument || Date.now() >= ticket.expires ||
+                        ticket.snapshot !== JSON.stringify(data.state)) { finish(job, "초기화 확인 코드가 만료/불일치했거나 기록이 변경되었습니다. !경품초기화부터 다시 진행하세요."); return; }
+                    var old = data.state;
+                    data.state = { version: 1, config: signature(), revision: 0, winners: [], round: old.round + 1, paused: true,
+                        lastReset: { at: Date.now(), by: String(job.player.id), previousCount: old.winners.length, previousRound: old.round } };
+                    resetTickets = Object.create(null);
+                    save(job, id, data, "경품 초기화 완료. 새 회차 R" + data.state.round + ", 총 재고 " + C.totalPrizes + "개. !경품시작으로 재개하세요."); return;
+                }
+                if (data.state.paused) { finish(job, "현재 추첨이 중지되어 있습니다. 잠시 후 다시 참여해주세요."); return; }
                 var previous = data.people[job.user];
-                if (previous) { finish(job, "이미 참여하셨습니다. " + result(previous)); return; }
+                if (previous) { finish(job, "이미 참여하셨습니다. " + result(previous, data.state.round)); return; }
                 // 시계가 이전 날짜로 돌아갔을 때 과거 일자 재고를 다시 배정하지 않습니다.
                 if (data.state.winners.some(function (w) { return w.day > today; })) throw Error("시계 역행");
                 var available = C.ranks.filter(function (r) {
@@ -133,20 +189,12 @@ var PRIZE_CONFIG = {
                 winner.day = day(winner.at);
                 if (winner.day !== today) { finish(job, "날짜가 변경되었습니다. 다시 참여해주세요."); return; }
                 data.state.winners.push(winner); data.state.revision++;
-                data.root[KEY] = data.state;
-                var serialized = JSON.stringify(data.root);
-                if (unescape(encodeURIComponent(serialized)).length > C.maxStorageBytes) throw Error("저장 안전 한도 초과");
-                App.setStorage(serialized);
                 // 쓰기 콜백/트랜잭션 API를 가정하지 않고 재조회 결과로 확인합니다.
-                App.getStorage(guarded(id, function () {
-                    var saved = read();
-                    if (JSON.stringify(saved.state) !== JSON.stringify(data.state)) throw Error("저장 재조회 불일치");
-                    finish(job, result(winner));
-                }));
+                save(job, id, data, result(winner, data.state.round));
             }));
         } catch (_) { fail("스토리지 접근 오류입니다."); }
     }
-    function enqueue(p, kind, page) {
+    function enqueue(p, kind, page, argument) {
         try { checkConfig(); } catch (e) { tell(p, e.message); return; }
         if (String(App.mapHashID) !== C.drawMapId) { tell(p, "지정된 추첨 맵에서 참여해주세요."); return; }
         if (stopped) { tell(p, "추첨 점검 중입니다. 관리자에게 문의하세요."); return; }
@@ -157,21 +205,32 @@ var PRIZE_CONFIG = {
         if (pending[key]) { tell(p, "이전 요청 처리 중입니다."); return; }
         if (queue.length >= C.maxQueue) { tell(p, "참여자가 많습니다. 잠시 후 다시 시도해주세요."); return; }
         pending[key] = true;
-        queue.push({ player: p, user: user, key: key, kind: kind, page: page || 1 });
+        queue.push({ player: p, user: user, key: key, kind: kind, page: page || 1, argument: argument });
         process();
     }
     App.onSay.Add(function (p, text) {
         text = String(text).trim();
-        if (text === "!추첨") enqueue(p, "draw");
+        if (text === "!추첨") tell(p, "경품 오브젝트 앞에서 F 상호작용으로 참여해주세요.");
         else if (text === "!경품현황") enqueue(p, "status");
+        else if (text === "!경품중지") enqueue(p, "pause");
+        else if (text === "!경품시작") enqueue(p, "resume");
+        else if (text === "!경품초기화") enqueue(p, "resetPrepare");
+        else if (/^!경품초기화\s+\S+$/.test(text)) enqueue(p, "reset", 1, text.split(/\s+/)[1]);
         else if (/^!당첨목록(?:\s+[1-9][0-9]*)?$/.test(text)) enqueue(p, "winners", Number(text.split(/\s+/)[1] || 1));
-        else if (text === "!경품도움말") tell(p, "!추첨 또는 Q: 경품 추첨 / 이벤트당 계정별 1회 당첨\n관리자: !경품현황, !당첨목록 1");
+        else if (text === "!경품도움말") tell(p, "경품 오브젝트 앞에서 F 상호작용: 회차당 계정별 1회 당첨\n" +
+            "관리자: !경품현황 / !당첨목록 1 / !경품중지 / !경품시작 / !경품초기화 → 확인 코드 입력");
     });
-    App.addOnKeyDown(81, function (p) { enqueue(p, "draw"); });
+    App.onTriggerObject.Add(function (p, layer, x, y, key) {
+        var pos = C.objectPosition;
+        if (pos !== null) {
+            if (!object(pos) || layer !== pos.layer || x !== pos.x || y !== pos.y) return;
+        } else if (key !== C.objectKey) return;
+        enqueue(p, "draw");
+    });
     App.onSidebarTouched.Add(function (p) {
-        p.showConfirm("경품을 추첨할까요? 이벤트당 계정별 1회 당첨입니다.", function () { enqueue(p, "draw"); });
+        tell(p, "경품 오브젝트 앞에서 F 상호작용으로 참여해주세요. !경품도움말");
     });
-    App.onJoinPlayer.Add(function (p) { tell(p, "!추첨 또는 Q로 참여하세요. 모바일은 사이드바 앱을 눌러주세요. !경품도움말"); });
+    App.onJoinPlayer.Add(function (p) { tell(p, "경품 오브젝트 앞에서 F 상호작용으로 참여하세요. !경품도움말"); });
     App.onUpdate.Add(function (dt) {
         if (stopped) return;
         if (busy) {
