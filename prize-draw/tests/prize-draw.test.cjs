@@ -12,7 +12,7 @@ function setup(options = {}) {
         setStorage(s) { writes++; if (options.throwWrite) throw Error('write failed'); if (!options.dropWrite) storage = s; },
         addOnKeyDown(key, fn) { listeners.key = fn; }
     };
-    ['onSay', 'onTriggerObject', 'onSidebarTouched', 'onJoinPlayer', 'onUpdate', 'onDestroy', 'onMigrationStart'].forEach(k => {
+    ['onSay', 'onObjectTouched', 'onTriggerObject', 'onSidebarTouched', 'onJoinPlayer', 'onUpdate', 'onDestroy', 'onMigrationStart'].forEach(k => {
         App[k] = { Add(fn) { listeners[k] = fn; } };
     });
     class Clock extends Date { static now() { return now; } }
@@ -30,7 +30,7 @@ function setup(options = {}) {
     }
     function settle() { for (let i = 0; i < 110; i++) { flush(); listeners.onUpdate(0.02); } flush(); }
     return { App, listeners, callbacks, user, flush, settle, ctx,
-        draw(p) { listeners.onTriggerObject(p, 3, 10, 10, 'prize_draw'); },
+        draw(p) { listeners.onObjectTouched(p, 10, 10, 0, { type: 21, text: '1001', param1: 'prize_draw' }); },
         get storage() { return storage; }, set storage(s) { storage = s; },
         get state() { return JSON.parse(storage).zepPrizeDrawV1; }, get writes() { return writes; },
         setNow(value) { now = Date.parse(value); }
@@ -154,11 +154,11 @@ function resetCode(h, admin) {
     assert.ok(match, message); return match[1];
 }
 test('다른 key 오브젝트와 상호작용해도 추첨되지 않음', () => {
-    const h = setup(); h.listeners.onTriggerObject(h.user(), 3, 10, 10, 'other'); h.flush();
+    const h = setup({ config: { interactionMode: 'key' } }); h.listeners.onTriggerObject(h.user(), 3, 10, 10, 'other'); h.flush();
     assert.equal(h.writes, 0); assert.equal(h.callbacks.length, 0);
 });
 test('좌표 모드는 레이어와 x/y가 모두 일치할 때만 추첨', () => {
-    const h = setup({ config: { objectPosition: { layer: 5, x: 4, y: 7 } } });
+    const h = setup({ config: { interactionMode: 'position', objectPosition: { layer: 5, x: 4, y: 7 } } });
     for (const coords of [[3,4,7], [5,5,7], [5,4,8]]) h.listeners.onTriggerObject(h.user(), ...coords, 'prize_draw');
     h.flush(); assert.equal(h.writes, 0);
     h.listeners.onTriggerObject(h.user(), 5, 4, 7, undefined); h.flush(); assert.equal(h.state.winners.length, 1);
@@ -242,4 +242,22 @@ test('이전 버전 원장은 보존하고 round/paused 기본값만 추가', ()
 });
 test('용량 안전 한도 초과 시 쓰기 전에 중단', () => {
     const h = setup({ config: { maxStorageBytes: 10 } }); h.draw(h.user()); h.flush(); assert.equal(h.writes, 0);
+});
+test('개발자 상호작용 오브젝트의 type/Number/Value가 모두 일치해야 추첨', () => {
+    const h = setup();
+    for (const obj of [null, {}, { type: 1, text: '1001', param1: 'prize_draw' },
+        { type: 21, text: '1002', param1: 'prize_draw' }, { type: 21, text: '1001', param1: 'other' },
+        { type: 21, text: '1001' }]) h.listeners.onObjectTouched(h.user(), 10, 10, 0, obj);
+    h.flush(); assert.equal(h.writes, 0); assert.equal(h.callbacks.length, 0);
+    h.listeners.onObjectTouched(h.user(), 10, 10, 0, { type: 21, text: 1001, param1: 'prize_draw' });
+    h.flush(); assert.equal(h.state.winners.length, 1);
+});
+test('기본 editor 모드에서는 F key/좌표 이벤트가 추첨을 중복 실행하지 않음', () => {
+    const h = setup(); h.listeners.onTriggerObject(h.user(), 3, 10, 10, 'prize_draw'); h.flush();
+    assert.equal(h.writes, 0); h.draw(h.user()); h.flush();
+    h.draw(h.user()); h.flush(); assert.equal(h.state.winners.length, 1);
+});
+test('이전 key 모드는 명시적으로 선택하면 정상 동작', () => {
+    const h = setup({ config: { interactionMode: 'key' } }); h.draw(h.user()); h.flush(); assert.equal(h.writes, 0);
+    h.listeners.onTriggerObject(h.user(), 3, 10, 10, 'prize_draw'); h.flush(); assert.equal(h.state.winners.length, 1);
 });

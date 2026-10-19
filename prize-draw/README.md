@@ -1,6 +1,6 @@
 # ZEP 경품 추첨 앱 — 외부 DB 없이 운영
 
-유저가 **경품 오브젝트 앞에서 F 상호작용**하면 무작위로 등수를 뽑는 앱입니다. 등수별 총수량과 하루 당첨 한도를 ZEP `App.storage`에 기록하는 **독립 사이드바 앱**입니다. 기존 코인·스탬프·위시리스트 앱과 별도로 설치합니다.
+유저가 맵 에디터의 **개발자 기능 → ZEP Script 상호작용 오브젝트**에 접촉하면 무작위로 등수를 뽑는 앱입니다. 등수별 총수량과 하루 당첨 한도를 ZEP `App.storage`에 기록하는 **독립 사이드바 앱**입니다. 기존 코인·스탬프·위시리스트 앱과 별도로 설치합니다.
 
 - [설치용 ZIP 다운로드](https://github.com/junho3789/ZEP/raw/refs/heads/main/prize-draw/zep-prize-draw.zip)
 - [main.js 보기](https://github.com/junho3789/ZEP/blob/main/prize-draw/main.js)
@@ -8,7 +8,7 @@
 
 ## 이전 버전에서 업데이트
 
-기존 `prize-draw` 앱의 ZIP을 이 버전으로 업데이트하되 `eventId`, `drawMapId`, `totalPrizes`, `ranks` 설정을 기존과 동일하게 유지하세요. 정상적인 기존 v1 당첨 기록은 삭제하지 않고 R1으로 이어받습니다. 새로 추가된 `objectKey`/`objectPosition`은 원하는 오브젝트에 맞춰 설정하세요. 기존 앱의 Q/채팅/사이드바 추첨 입구는 오브젝트 참여 안내로 바뀝니다.
+기존 `prize-draw` 앱의 ZIP을 이 버전으로 업데이트하되 `eventId`, `drawMapId`, `totalPrizes`, `ranks` 설정을 기존과 동일하게 유지하세요. 정상적인 기존 v1 당첨 기록은 삭제하지 않고 R1으로 이어받습니다. 기본 `interactionMode: "editor"`는 아래 Number/Value 방식입니다. 이전 key 방식을 계속 쓰려면 `interactionMode: "key"`, 좌표 방식을 쓰려면 `interactionMode: "position"`을 명시하고 기존 `objectKey`/`objectPosition`을 유지하세요. 기존 앱의 Q/채팅/사이드바 추첨 입구는 오브젝트 참여 안내로 바뀝니다.
 
 ## 기본 배정 예시
 
@@ -27,7 +27,7 @@
 
 1. ZIP을 내려받아 압축을 풉니다.
 2. **운영 전** `main.js` 상단의 `drawMapId`를 실제 추첨 맵의 hash ID로 교체합니다. `https://zep.us/play/스페이스ID/맵ID`에서 맵 ID를 사용하며, 스페이스 ID가 아닙니다. 미설정 상태에서는 추첨하지 않습니다.
-3. 맵 에디터에 원하는 경품 오브젝트를 배치하고 **ZEP Script 상호작용** 기능을 지정합니다. 오브젝트의 key를 `prize_draw`로 맞추세요. key 지정이 어려우면 `objectPosition`을 `{ layer: 3, x: 10, y: 10 }`처럼 실제 좌표로 지정하세요. 일반 오브젝트 레이어는 3, 상단 오브젝트는 5입니다. 좌표 모드에서는 key를 검사하지 않고 레이어·x·y가 모두 일치하는 오브젝트만 허용합니다. `objectPosition: null`이면 `objectKey`로 검사합니다. 이미지는 맵 에디터에서 선택하며 스크립트가 자동 배치하지 않습니다.
+3. **맵 에디터 → 오브젝트설치 → 개발자 기능 → ZEP Script 상호작용**을 선택하여 경품 위치에 배치합니다. 오브젝트 설정에 **Number: `1001`**, **Value: `prize_draw`**를 입력하고 저장합니다. 코드 기본값 `interactionMode: "editor"`, `objectNumber: "1001"`, `objectValue: "prize_draw"`와 일치시킵니다. 이 모드에서는 key나 레이어/좌표 입력이 필요 없습니다. 이미지는 맵 에디터에서 선택하며 스크립트가 자동 배치하지 않습니다.
 4. `eventId`, `totalPrizes`, `ranks`를 확정합니다. `totalPrizes`는 모든 등수의 `total` 합계와 같아야 합니다. 각 등수의 `dailyLimit`가 하루 상한이며, 0이면 해당 등수를 배정하지 않습니다.
 5. 수정한 `main.js`를 ZIP의 **최상위**에 넣어 다시 압축합니다. README와 tests는 앱 업로드에 필요하지 않습니다.
 6. ZEP의 스크립트 앱 제작/업로드 기능에서 새 **사이드바 앱**을 만들고 ZIP을 올려 추첨 스페이스에 설치합니다. 기존 앱의 `main.js`를 교체하지 마세요.
@@ -40,11 +40,33 @@ CLI로 설치 ZIP을 만들 때(압축을 푼 디렉터리에서):
 python3 -c 'from zipfile import ZipFile; z=ZipFile("upload.zip","w"); z.write("main.js"); z.close()'
 ```
 
+## 맵 에디터 입력값
+
+| 설정 위치 | 입력값 |
+|---|---|
+| 오브젝트설치 → 개발자 기능 | ZEP Script 상호작용 |
+| Number | `1001` |
+| Value | `prize_draw` |
+| 스크립트 `interactionMode` | `"editor"` (기본값) |
+| 스크립트 `drawMapId` | 실제 추첨 맵 ID |
+
+공식 [ZEP 스크립트 상호작용 오브젝트 가이드](https://docs-kr.zep.us/creator/reference/script-object-interaction)에 맞춰 `onObjectTouched`로 오브젝트를 받고, 상호작용 타입과 `obj.text`(Number), `obj.param1`(Value)를 모두 검사합니다. 따라서 **기본 모드는 해당 오브젝트에 접촉할 때 실행**됩니다. 기존 F 키의 key/좌표 모드와 구분하세요. 같은 값의 오브젝트를 여러 개 배치하면 동일한 재고와 계정별 당첨 기록을 공유합니다. 재접촉 시 이미 당첨된 계정에는 기존 결과를 안내합니다.
+
+```javascript
+interactionMode: "editor",
+objectNumber: "1001",
+objectValue: "prize_draw",
+```
+
+Number 또는 Value를 바꾸면 스크립트 설정도 같은 값으로 변경하세요. 일반 오브젝트, 다른 타입, 값이 다른 오브젝트는 추첨하지 않습니다. 기본 모드에서는 `objectKey`/`objectPosition`은 사용하지 않습니다. 설정이 적용되지 않으면 먼저 맵 저장과 앱 실행 여부, `drawMapId`, Number/Value 값을 확인하세요.
+
+고급 옵션: 이전 F 상호작용 방식이 필요하면 `interactionMode: "key"`와 `objectKey`를 사용하거나, `interactionMode: "position"`과 `objectPosition: { layer: 3, x: 10, y: 10 }`을 사용합니다. 레이어는 일반 오브젝트 3, 상단 오브젝트 5이며 좌표 모드는 레이어와 x/y 모두 일치해야 합니다. 기본 개발자 오브젝트 설정에서는 이 옵션이 필요 없습니다.
+
 ## 사용
 
 | 입력 | 동작 |
 |---|---|
-| 경품 오브젝트 앞 F 상호작용 | 해당 유저에게 무작위 경품 추첨 |
+| 지정한 ZEP Script 상호작용 오브젝트에 접촉 | 해당 유저에게 무작위 경품 추첨 |
 | `!추첨` 또는 사이드바 앱 클릭 | 오브젝트 참여 방법 안내(추첨 안 함) |
 | `!경품도움말` | 사용 안내 |
 | `!경품현황` | 등수별 전체/오늘 당첨 수 조회, 관리자 전용 |
@@ -111,12 +133,13 @@ Node.js 18 이상에서 외부 패키지 없이:
 node tests/prize-draw.test.cjs
 ```
 
-33개 테스트: 전체 1,000개 정확 소진, 등수별 일일 상한, 100개 동시 요청, 중복 계정/재시작, 한국시간 자정, 한도 0, 가중치 경계, 맵/로그인 제한, 관리자 권한, 타 앱 데이터 보존, JSON/원장 손상, 운영 중 설정 변경, 설정 합계, 쓰기 실패/누락, 타임아웃, 저장 직후 이전, 시계 역행, 용량 한도, 지정 오브젝트 key/좌표 필터, 채팅/Q 우회 차단, 중지/시작 상태 유지, 초기화 전 중지 필수, 확인 코드 만료·오타·재사용·타 관리자 제한, 회차 증가·재참여, 원장 변경 시 초기화 거부, 대기열 순서와 권한 재검사, 이전 v1 원장 호환.
+36개 테스트: 전체 1,000개 정확 소진, 등수별 일일 상한, 100개 동시 요청, 중복 계정/재시작, 한국시간 자정, 한도 0, 가중치 경계, 맵/로그인 제한, 관리자 권한, 타 앱 데이터 보존, JSON/원장 손상, 운영 중 설정 변경, 설정 합계, 쓰기 실패/누락, 타임아웃, 저장 직후 이전, 시계 역행, 용량 한도, 지정 오브젝트 key/좌표 필터, 채팅/Q 우회 차단, 중지/시작 상태 유지, 초기화 전 중지 필수, 확인 코드 만료·오타·재사용·타 관리자 제한, 회차 증가·재참여, 원장 변경 시 초기화 거부, 대기열 순서와 권한 재검사, 이전 v1 원장 호환, 개발자 오브젝트 type/Number/Value 검사, editor 모드와 F 이벤트 분리, 이전 key 모드 호환.
 
-이는 ZEP API 모형을 사용한 자동 테스트입니다. 실제 ZEP 설치·오브젝트 F/모바일 상호작용·저장 지속성·서버 이전·스토리지 용량은 이 환경에서 검증하지 않았습니다. 운영 전 테스트 스페이스에서 확인하세요. 1등 `total: 2, dailyLimit: 1` 같은 작은 수량으로 당일 추가 배정 차단, 앱 재시작 후 결과 유지, 관리자 중지→초기화→시작과 새 회차 재참여를 확인하세요. 모바일에서는 ZEP의 오브젝트 상호작용 UI가 같은 이벤트를 발생시키는지 확인하세요.
+이는 ZEP API 모형을 사용한 자동 테스트입니다. 실제 ZEP 설치·개발자 오브젝트 접촉/모바일 상호작용·저장 지속성·서버 이전·스토리지 용량은 이 환경에서 검증하지 않았습니다. 운영 전 테스트 스페이스에서 확인하세요. 1등 `total: 2, dailyLimit: 1` 같은 작은 수량으로 당일 추가 배정 차단, 앱 재시작 후 결과 유지, 관리자 중지→초기화→시작과 새 회차 재참여를 확인하세요. 모바일에서도 지정 오브젝트에 접근/접촉하여 이벤트가 발생하는지 확인하세요.
 
 ## 공식 API 참고
 
+- [개발자 기능의 ZEP Script 상호작용 오브젝트 설정](https://docs-kr.zep.us/creator/reference/script-object-interaction)
 - [ZEP Storage](https://docs-kr.zep.us/zep-script-api/zepscriptapi/scriptapp/storage)
 - [플레이어 필드: emailHash, isGuest, role](https://docs.zep.us/zep-script/zep-script-api/scriptplayer/field)
 - [오브젝트 F 상호작용·채팅 이벤트](https://docs.zep.us/zep-script/zep-script-api/scriptapp/event-listeners)

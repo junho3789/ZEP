@@ -2,6 +2,10 @@
 var PRIZE_CONFIG = {
     eventId: "prize-event-2026-v1",
     drawMapId: "REPLACE_WITH_MAP_HASH_ID", // URL의 맵 ID로 교체 필수
+    interactionMode: "editor", // 기본: 개발자 기능 > ZEP Script 상호작용 오브젝트
+    objectNumber: "1001",      // 오브젝트 설정 Number (obj.text)
+    objectValue: "prize_draw", // 오브젝트 설정 Value (obj.param1)
+    // 이전 방식이 필요할 때만 interactionMode를 "key" 또는 "position"으로 변경
     objectKey: "prize_draw", // 맵 에디터의 ZEP Script 상호작용 오브젝트 key
     // key 설정이 어려운 경우 { layer: 3, x: 10, y: 10 }처럼 지정.
     // 좌표 지정 시 key 대신 이 레이어/좌표만 검사합니다(상단 오브젝트 layer: 5).
@@ -36,7 +40,10 @@ var PRIZE_CONFIG = {
     }
     function checkConfig() {
         if (!C.eventId || !C.drawMapId || C.drawMapId === "REPLACE_WITH_MAP_HASH_ID") throw Error("eventId와 drawMapId를 설정하세요.");
-        if (C.objectPosition !== null) {
+        if (["editor", "key", "position"].indexOf(C.interactionMode) === -1) throw Error("오브젝트 연결 모드 오류");
+        if (C.interactionMode === "editor") {
+            if (typeof C.objectNumber !== "string" || !C.objectNumber || typeof C.objectValue !== "string" || !C.objectValue) throw Error("오브젝트 Number/Value를 설정하세요.");
+        } else if (C.interactionMode === "position") {
             if (!object(C.objectPosition) || (C.objectPosition.layer !== 3 && C.objectPosition.layer !== 5) ||
                 !integer(C.objectPosition.x) || !integer(C.objectPosition.y)) throw Error("오브젝트 좌표 설정 오류");
         } else if (typeof C.objectKey !== "string" || !C.objectKey) throw Error("오브젝트 key를 설정하세요.");
@@ -210,27 +217,37 @@ var PRIZE_CONFIG = {
     }
     App.onSay.Add(function (p, text) {
         text = String(text).trim();
-        if (text === "!추첨") tell(p, "경품 오브젝트 앞에서 F 상호작용으로 참여해주세요.");
+        if (text === "!추첨") tell(p, "맵의 경품 상호작용 오브젝트를 이용해 참여해주세요.");
         else if (text === "!경품현황") enqueue(p, "status");
         else if (text === "!경품중지") enqueue(p, "pause");
         else if (text === "!경품시작") enqueue(p, "resume");
         else if (text === "!경품초기화") enqueue(p, "resetPrepare");
         else if (/^!경품초기화\s+\S+$/.test(text)) enqueue(p, "reset", 1, text.split(/\s+/)[1]);
         else if (/^!당첨목록(?:\s+[1-9][0-9]*)?$/.test(text)) enqueue(p, "winners", Number(text.split(/\s+/)[1] || 1));
-        else if (text === "!경품도움말") tell(p, "경품 오브젝트 앞에서 F 상호작용: 회차당 계정별 1회 당첨\n" +
+        else if (text === "!경품도움말") tell(p, "경품 상호작용 오브젝트 이용: 회차당 계정별 1회 당첨\n" +
             "관리자: !경품현황 / !당첨목록 1 / !경품중지 / !경품시작 / !경품초기화 → 확인 코드 입력");
     });
+    // 맵 에디터 > 오브젝트설치 > 개발자 기능 > ZEP Script 상호작용.
+    // 공식 가이드의 onObjectTouched(sender, x, y, tileID, obj) 연결 방식.
+    App.onObjectTouched.Add(function (p, x, y, tileID, obj) {
+        if (C.interactionMode !== "editor" || !obj) return;
+        var effectType = typeof ObjectEffectType !== "undefined" ? ObjectEffectType.INTERACTION_WITH_ZEPSCRIPTS : 21;
+        if (Number(obj.type) !== effectType || obj.text == null || obj.param1 == null) return;
+        if (String(obj.text) !== C.objectNumber || String(obj.param1) !== C.objectValue) return;
+        enqueue(p, "draw");
+    });
     App.onTriggerObject.Add(function (p, layer, x, y, key) {
+        if (C.interactionMode !== "key" && C.interactionMode !== "position") return;
         var pos = C.objectPosition;
-        if (pos !== null) {
+        if (C.interactionMode === "position") {
             if (!object(pos) || layer !== pos.layer || x !== pos.x || y !== pos.y) return;
         } else if (key !== C.objectKey) return;
         enqueue(p, "draw");
     });
     App.onSidebarTouched.Add(function (p) {
-        tell(p, "경품 오브젝트 앞에서 F 상호작용으로 참여해주세요. !경품도움말");
+        tell(p, "맵의 경품 상호작용 오브젝트를 이용해 참여해주세요. !경품도움말");
     });
-    App.onJoinPlayer.Add(function (p) { tell(p, "경품 오브젝트 앞에서 F 상호작용으로 참여하세요. !경품도움말"); });
+    App.onJoinPlayer.Add(function (p) { tell(p, "맵의 경품 상호작용 오브젝트로 참여하세요. !경품도움말"); });
     App.onUpdate.Add(function (dt) {
         if (stopped) return;
         if (busy) {
