@@ -319,3 +319,40 @@ test('나간 플레이어/앱 종료 시 팝업 정리, 늦은 위젯 메시지�
     h.interact(h.user(2)); h.listeners.onDestroy(); assert.equal(h.callbacks.length > 0, true); h.flush();
     assert.equal(h.writes, 1);
 });
+test('관리자 CSV 내보내기는 현재 원장 전체를 읽고 한글 BOM/한국시각 포함; 저장 미변경', () => {
+    const h = setup(), a = h.user(99, { role: 3000 }); h.draw(h.user()); h.flush();
+    const before = h.storage; command(h, a, '!당첨내보내기'); const w = a.widgets.at(-1);
+    assert.equal(w.file, 'prize-export.html'); assert.equal(w.packets.length, 0);
+    w.receive(a, { type: 'ready' }); const packet = w.packets.at(-1);
+    assert.equal(packet.type, 'export'); assert.equal(packet.count, 1); assert.equal(packet.csv.charCodeAt(0), 0xfeff);
+    assert.match(packet.csv, /계정 이메일 해시/); assert.match(packet.csv, /hash-1/);
+    assert.match(packet.csv, /2026-10-19 12:00:00/); assert.match(packet.csv, /prize-event-2026-v1-R1-1/);
+    assert.equal(h.storage, before); assert.equal(h.writes, 1);
+});
+test('일반 유저의 CSV 요청/다른 사용자의 위젯 요청/권한 회수 후 조회 거부', () => {
+    const h = setup(), p = h.user(), a = h.user(99, { role: 3000 }); command(h, p, '!당첨내보내기');
+    assert.equal(p.widgets.length, 0); assert.match(p.messages.join(''), /관리자 전용/);
+    command(h, a, '!당첨내보내기'); const w = a.widgets.at(-1);
+    w.receive(p, { type: 'ready' }); assert.equal(w.packets.length, 0);
+    a.role = 0; w.receive(a, { type: 'ready' }); assert.equal(w.destroyed, true); assert.equal(w.packets.length, 0);
+});
+test('CSV 특수문자 이스케이프와 엑셀 수식 문자열 보호', () => {
+    const h = setup({ config: { prizeNames: { rank1: ' =HYPERLINK("test")\n경품, 이름' } } });
+    h.draw(h.user(1, { emailHash: '+formula' })); h.flush();
+    const a = h.user(99, { role: 3001 }); command(h, a, '!당첨내보내기'); const w = a.widgets.at(-1);
+    w.receive(a, { type: 'ready' }); const csv = w.packets.at(-1).csv;
+    assert.ok(csv.includes('"\' =HYPERLINK(""test"")\n경품, 이름"')); assert.ok(csv.includes('"\'+formula"'));
+});
+test('빈 목록도 헤더 CSV로 내보내고 팝업 닫기/이탈 정리', () => {
+    const h = setup(), a = h.user(99, { role: 3000 }); command(h, a, '!당첨내보내기'); const w = a.widgets.at(-1);
+    w.receive(a, { type: 'ready' }); assert.equal(w.packets.at(-1).count, 0);
+    assert.equal(w.packets.at(-1).csv.split('\r\n').length, 2); w.receive(a, { type: 'close' }); assert.equal(w.destroyed, true);
+    command(h, a, '!당첨내보내기'); h.listeners.onLeavePlayer(a); assert.equal(a.widgets.at(-1).destroyed, true);
+});
+test('초기화 후 내보내기는 새 회차만 포함; 이전 내려받기 원문은 조회시점 스냅샷', () => {
+    const h = setup(), a = h.user(99, { role: 3000 }); h.draw(h.user()); h.flush(); command(h, a, '!당첨내보내기');
+    const w = a.widgets.at(-1); command(h, a, '!경품중지'); const code = resetCode(h, a); command(h, a, '!경품초기화 ' + code);
+    w.receive(a, { type: 'ready' }); assert.equal(w.packets.at(-1).count, 1); assert.equal(w.packets.at(-1).round, 1);
+    command(h, a, '!당첨내보내기'); const next = a.widgets.at(-1); next.receive(a, { type: 'ready' });
+    assert.equal(next.packets.at(-1).count, 0); assert.equal(next.packets.at(-1).round, 2);
+});

@@ -32,6 +32,7 @@ var PRIZE_CONFIG = {
     var pending = Object.create(null), elapsed = 0, token = 0;
     var resetTickets = Object.create(null), ticketSerial = 0;
     var popups = Object.create(null);
+    var exports = Object.create(null);
     var hasOwn = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
     function object(o) { return o && typeof o === "object" && !Array.isArray(o); }
     function integer(n) { return typeof n === "number" && isFinite(n) && Math.floor(n) === n && n >= 0; }
@@ -49,6 +50,40 @@ var PRIZE_CONFIG = {
         var key = String(p.id), session = popups[key];
         delete popups[key];
         if (session) { try { session.widget.destroy(); } catch (_) {} }
+    }
+    function closeExport(p) {
+        var key = String(p.id), session = exports[key]; delete exports[key];
+        if (session) { try { session.widget.destroy(); } catch (_) {} }
+    }
+    function csvCell(value) {
+        var text = String(value == null ? "" : value);
+        if (/^[\s\u0000-\u001f]*[=+@-]/.test(text)) text = "'" + text;
+        return '"' + text.replace(/"/g, '""') + '"';
+    }
+    function exportWinners(p, data) {
+        var header = ["이벤트", "회차", "순번", "당첨번호", "등수", "경품명", "당첨일(KST)", "당첨시각(KST)", "계정 이메일 해시"];
+        var rows = [header];
+        data.state.winners.forEach(function (w) {
+            var r = rankById(w.rank);
+            rows.push([C.eventId, "R" + data.state.round, w.no, C.eventId + "-R" + data.state.round + "-" + w.no,
+                r.name, C.prizeNames && C.prizeNames[w.rank] || r.name + " 경품", w.day,
+                new Date(w.at + 9 * 3600000).toISOString().slice(0, 19).replace("T", " "), w.user]);
+        });
+        var csv = "\ufeff" + rows.map(function (row) { return row.map(csvCell).join(","); }).join("\r\n") + "\r\n";
+        var now = Date.now(), safeName = C.eventId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60);
+        var packet = { type: "export", csv: csv, count: data.state.winners.length, round: data.state.round,
+            generatedAt: new Date(now + 9 * 3600000).toISOString().slice(0, 19).replace("T", " ") + " KST",
+            filename: "prize-winners-" + safeName + "-R" + data.state.round + "-" + day(now) + ".csv" };
+        closeExport(p);
+        var widget = p.showWidgetResponsive("prize-export.html", 5, 4, 5, 4);
+        if (!widget) throw Error("export widget unavailable");
+        var session = { widget: widget }; exports[String(p.id)] = session;
+        widget.onMessage.Add(function (sender, message) {
+            if (!sender || String(sender.id) !== String(p.id) || exports[String(p.id)] !== session || !message) return;
+            if (message.type === "close") { closeExport(p); return; }
+            if (!(sender.role >= 3000)) { closeExport(p); return; }
+            if (message.type === "ready") { try { widget.sendMessage(packet); } catch (_) {} }
+        });
     }
     function openDraw(p) {
         if (popups[String(p.id)]) return; // 반복 접촉은 이미 열린 화면을 유지합니다.
@@ -181,6 +216,11 @@ var PRIZE_CONFIG = {
                 var data = read(), today = day(Date.now());
                 // 큐 대기 중 권한 변경도 반영합니다.
                 if (job.kind !== "draw" && !(job.player.role >= 3000)) { finish(job, "관리자 전용 명령입니다."); return; }
+                if (job.kind === "export") {
+                    try { exportWinners(job.player, data); finish(job, "당첨 목록 다운로드 창을 열었습니다. 현재 회차 " + data.state.winners.length + "건입니다."); }
+                    catch (_) { closeExport(job.player); finish(job, "내보내기 창을 열 수 없습니다. ZIP에 prize-export.html이 포함됐는지 확인해주세요."); }
+                    return;
+                }
                 if (job.kind === "status") {
                     var lines = [today + " (한국시간) / 총 당첨 " + data.state.winners.length + "/" + C.totalPrizes,
                         "회차 R" + data.state.round + " / " + (data.state.paused ? "추첨 중지" : "추첨 진행")];
@@ -278,13 +318,14 @@ var PRIZE_CONFIG = {
         }
         if (text === "!추첨") tell(p, "맵의 경품 상호작용 오브젝트를 이용해 참여해주세요.");
         else if (text === "!경품현황") enqueue(p, "status");
+        else if (text === "!당첨내보내기") enqueue(p, "export");
         else if (text === "!경품중지") enqueue(p, "pause");
         else if (text === "!경품시작") enqueue(p, "resume");
         else if (text === "!경품초기화") enqueue(p, "resetPrepare");
         else if (/^!경품초기화\s+\S+$/.test(text)) enqueue(p, "reset", 1, text.split(/\s+/)[1]);
         else if (/^!당첨목록(?:\s+[1-9][0-9]*)?$/.test(text)) enqueue(p, "winners", Number(text.split(/\s+/)[1] || 1));
         else if (text === "!경품도움말") tell(p, "경품 상호작용 오브젝트 이용: 회차당 계정별 1회 당첨\n" +
-            "관리자: !경품맵확인 / !경품현황 / !당첨목록 1 / !경품중지 / !경품시작 / !경품초기화 → 확인 코드 입력");
+            "관리자: !경품맵확인 / !경품현황 / !당첨목록 1 / !당첨내보내기 / !경품중지 / !경품시작 / !경품초기화 → 확인 코드 입력");
     });
     // 맵 에디터 > 오브젝트설치 > 개발자 기능 > ZEP Script 상호작용.
     // 공식 가이드의 onObjectTouched(sender, x, y, tileID, obj) 연결 방식.
@@ -316,9 +357,10 @@ var PRIZE_CONFIG = {
     });
     // 서버 이전 때 새 쓰기를 멈춥니다. 메모리를 재저장해 최신 원장을 덮어쓰지 않습니다.
     if (App.onMigrationStart && App.onMigrationStart.Add) App.onMigrationStart.Add(function () { fail("서버 이전 중입니다."); });
-    App.onLeavePlayer.Add(function (p) { closePopup(p); });
+    App.onLeavePlayer.Add(function (p) { closePopup(p); closeExport(p); });
     App.onDestroy.Add(function () {
         fail("앱이 종료되었습니다.");
         Object.keys(popups).forEach(function (key) { closePopup({ id: key }); });
+        Object.keys(exports).forEach(function (key) { closeExport({ id: key }); });
     });
 })(App, PRIZE_CONFIG);
