@@ -1,0 +1,46 @@
+// 개발용 브라우저 검증: Playwright와 Chromium 필요. ZEP 배포 ZIP에는 포함하지 않습니다.
+const { chromium } = require('playwright');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const http = require('node:http');
+const fs = require('node:fs');
+(async () => {
+  const html = fs.readFileSync(path.join(__dirname, '../prize-draw.html'));
+  const server = http.createServer((req,res) => { res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});res.end(html); });
+  await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || (require('node:fs').existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined), args: ['--no-sandbox'] });
+  const page = await browser.newPage({ viewport: { width: 1024, height: 900 } });
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  const url = 'http://127.0.0.1:' + server.address().port;
+  const packet = { type: 'result', rank: '2등', ball: '2', prize: '커피 교환권', receipt: 'demo-R1-1', date: '2026-10-19', repeated: false };
+  async function deliver(data) { await page.evaluate(d => window.postMessage(d, '*'), data); }
+  await page.goto(url);
+  await deliver(packet);
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('#result').isVisible(), false, '애니메이션 전에 경품 결과 노출 금지');
+  await page.waitForFunction(() => !document.getElementById('result').hidden);
+  assert.equal(await page.locator('#prize').textContent(), '커피 교환권');
+  assert.equal(await page.locator('#ballNumber').textContent(), '2');
+  await deliver({ ...packet, prize: '위조된 두 번째 결과' });
+  await page.waitForTimeout(100);
+  assert.equal(await page.locator('#prize').textContent(), '커피 교환권', '중복 메시지로 결과 교체 금지');
+  await page.screenshot({ path: path.join(__dirname, '../../prize-popup-desktop.jpg'), type: 'jpeg', quality: 80 });
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.screenshot({ path: path.join(__dirname, '../../prize-popup-mobile.jpg'), type: 'jpeg', quality: 80 });
+  const fits = await page.locator('.card').evaluate(e => { const r=e.getBoundingClientRect();return r.left>=0 && r.right<=innerWidth; });
+  assert.equal(fits, true, '모바일 가로 넘침 방지');
+  await page.goto(url); await deliver({ type: 'notice', message: '오늘 준비한 경품이 소진되었습니다.' });
+  assert.equal(await page.locator('#result').isVisible(), false);
+  await page.locator('#statusText').filter({ hasText: '소진' }).waitFor();
+  await page.goto(url); await deliver({ ...packet, repeated: true });
+  await page.waitForFunction(() => !document.getElementById('result').hidden);
+  assert.equal(await page.locator('#title').textContent(), '나의 당첨 경품');
+  await page.goto(url); await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload(); await deliver(packet); await page.waitForFunction(() => !document.getElementById('result').hidden);
+  await page.goto(url); await deliver({ ...packet, repeated: true, prize: '<img src=x onerror=alert(1)>' });
+  await page.waitForFunction(() => !document.getElementById('result').hidden);
+  assert.equal(await page.locator('#prize img').count(), 0);
+  assert.equal(await page.locator('#prize').textContent(), '<img src=x onerror=alert(1)>');
+  assert.deepEqual(errors, []);
+  await browser.close(); server.close(); console.log('Widget browser checks passed: timed reveal, result, replay guard, mobile, notice, existing winner, reduced motion, text escaping.');
+})().catch(e => { console.error(e); process.exit(1); });

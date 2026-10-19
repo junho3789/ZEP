@@ -11,6 +11,8 @@ var PRIZE_CONFIG = {
     // 좌표 지정 시 key 대신 이 레이어/좌표만 검사합니다(상단 오브젝트 layer: 5).
     objectPosition: null,
     totalPrizes: 1000,
+    // 실제 경품명이 정해지면 등수 id에 맞춰 수정. 원장 재고 설정과 별개인 표시용 값.
+    prizeNames: { rank1: "1등 경품", rank2: "2등 경품", rank3: "3등 경품", rank4: "4등 경품", rank5: "5등 경품" },
     ranks: [
         { id: "rank1", name: "1등", total: 6, dailyLimit: 2 },
         { id: "rank2", name: "2등", total: 8, dailyLimit: 3 },
@@ -29,10 +31,44 @@ var PRIZE_CONFIG = {
     var KEY = "zepPrizeDrawV1", queue = [], busy = false, stopped = false;
     var pending = Object.create(null), elapsed = 0, token = 0;
     var resetTickets = Object.create(null), ticketSerial = 0;
+    var popups = Object.create(null);
     var hasOwn = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
     function object(o) { return o && typeof o === "object" && !Array.isArray(o); }
     function integer(n) { return typeof n === "number" && isFinite(n) && Math.floor(n) === n && n >= 0; }
     function tell(p, s) { try { p.sendMessage("[경품] " + s); } catch (_) {} }
+    function popupPacket(p, packet) {
+        var session = popups[String(p.id)];
+        if (!session) return false;
+        session.packet = packet;
+        try { session.widget.sendMessage(packet); return true; } catch (_) { return false; }
+    }
+    function drawNotice(p, message) {
+        if (!popupPacket(p, { type: "notice", message: message })) tell(p, message);
+    }
+    function closePopup(p) {
+        var key = String(p.id), session = popups[key];
+        delete popups[key];
+        if (session) { try { session.widget.destroy(); } catch (_) {} }
+    }
+    function openDraw(p) {
+        if (popups[String(p.id)]) return; // 반복 접촉은 이미 열린 화면을 유지합니다.
+        try {
+            var widget = p.showWidgetResponsive("prize-draw.html", 2, 2, 2, 2);
+            if (!widget) throw Error("widget unavailable");
+            var session = { widget: widget, packet: { type: "mixing" } };
+            popups[String(p.id)] = session;
+            widget.onMessage.Add(function (sender, data) {
+                if (!sender || String(sender.id) !== String(p.id) || popups[String(p.id)] !== session || !data) return;
+                if (data.type === "ready") {
+                    try { widget.sendMessage(session.packet); } catch (_) {}
+                } else if (data.type === "close") closePopup(p);
+                // 클라이언트의 draw/result/rank 등 메시지는 무시합니다. 추첨은 오브젝트 이벤트만 실행합니다.
+            });
+        } catch (_) {
+            closePopup(p); tell(p, "추첨 팝업을 열 수 없습니다. 앱 ZIP에 prize-draw.html이 포함됐는지 확인해주세요."); return;
+        }
+        enqueue(p, "draw");
+    }
     function day(ms) { return new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10); }
     function identity(p) {
         if (p.isGuest !== false || typeof p.emailHash !== "string" || !p.emailHash) return null;
@@ -96,14 +132,26 @@ var PRIZE_CONFIG = {
         return C.ranks.filter(function (r) { return r.id === id; })[0];
     }
     function result(w, round) { return rankById(w.rank).name + " 당첨! 당첨번호 " + C.eventId + "-R" + round + "-" + w.no + " (" + w.day + ")"; }
+    function drawResult(w, round, repeated) {
+        var rank = rankById(w.rank);
+        return { type: "result", rank: rank.name, ball: String(C.ranks.indexOf(rank) + 1),
+            prize: C.prizeNames && C.prizeNames[w.rank] || rank.name + " 경품",
+            receipt: C.eventId + "-R" + round + "-" + w.no, date: w.day, repeated: repeated };
+    }
     function fail(message) {
         stopped = true; token++;
-        queue.forEach(function (job) { tell(job.player, message + " 추첨을 중지했습니다. 관리자에게 문의하세요."); });
+        queue.forEach(function (job) {
+            var text = message + " 추첨을 중지했습니다. 관리자에게 문의하세요.";
+            if (job.kind === "draw") drawNotice(job.player, text); else tell(job.player, text);
+        });
         queue = []; pending = Object.create(null); busy = false;
         resetTickets = Object.create(null);
     }
     function finish(job, message) {
-        tell(job.player, message);
+        if (job.kind === "draw") {
+            if (job.drawResult) { if (!popupPacket(job.player, job.drawResult)) tell(job.player, message); }
+            else drawNotice(job.player, message);
+        } else tell(job.player, message);
         delete pending[job.key]; queue.shift(); busy = false; elapsed = 0;
         // 다음 요청은 onUpdate에서 처리해 동기 콜백의 재귀를 피합니다.
     }
@@ -176,7 +224,7 @@ var PRIZE_CONFIG = {
                 }
                 if (data.state.paused) { finish(job, "현재 추첨이 중지되어 있습니다. 잠시 후 다시 참여해주세요."); return; }
                 var previous = data.people[job.user];
-                if (previous) { finish(job, "이미 참여하셨습니다. " + result(previous, data.state.round)); return; }
+                if (previous) { job.drawResult = drawResult(previous, data.state.round, true); finish(job, "이미 참여하셨습니다. " + result(previous, data.state.round)); return; }
                 // 시계가 이전 날짜로 돌아갔을 때 과거 일자 재고를 다시 배정하지 않습니다.
                 if (data.state.winners.some(function (w) { return w.day > today; })) throw Error("시계 역행");
                 var available = C.ranks.filter(function (r) {
@@ -196,21 +244,23 @@ var PRIZE_CONFIG = {
                 winner.day = day(winner.at);
                 if (winner.day !== today) { finish(job, "날짜가 변경되었습니다. 다시 참여해주세요."); return; }
                 data.state.winners.push(winner); data.state.revision++;
+                job.drawResult = drawResult(winner, data.state.round, false);
                 // 쓰기 콜백/트랜잭션 API를 가정하지 않고 재조회 결과로 확인합니다.
                 save(job, id, data, result(winner, data.state.round));
             }));
         } catch (_) { fail("스토리지 접근 오류입니다."); }
     }
     function enqueue(p, kind, page, argument) {
-        try { checkConfig(); } catch (e) { tell(p, e.message); return; }
-        if (String(App.mapHashID) !== C.drawMapId) { tell(p, "지정된 추첨 맵에서 참여해주세요."); return; }
-        if (stopped) { tell(p, "추첨 점검 중입니다. 관리자에게 문의하세요."); return; }
+        function reject(message) { if (kind === "draw") drawNotice(p, message); else tell(p, message); }
+        try { checkConfig(); } catch (e) { reject(e.message); return; }
+        if (String(App.mapHashID) !== C.drawMapId) { reject("지정된 추첨 맵에서 참여해주세요."); return; }
+        if (stopped) { reject("추첨 점검 중입니다. 관리자에게 문의하세요."); return; }
         if (kind !== "draw" && !(p.role >= 3000)) { tell(p, "관리자 전용 명령입니다."); return; }
         var user = identity(p);
-        if (kind === "draw" && !user) { tell(p, "ZEP 로그인 후 참여해주세요. 계정 식별 정보를 확인할 수 없습니다."); return; }
+        if (kind === "draw" && !user) { reject("ZEP 로그인 후 참여해주세요. 계정 식별 정보를 확인할 수 없습니다."); return; }
         var key = kind === "draw" ? "draw:" + user : "admin:" + String(p.id);
-        if (pending[key]) { tell(p, "이전 요청 처리 중입니다."); return; }
-        if (queue.length >= C.maxQueue) { tell(p, "참여자가 많습니다. 잠시 후 다시 시도해주세요."); return; }
+        if (pending[key]) { reject("이전 요청 처리 중입니다."); return; }
+        if (queue.length >= C.maxQueue) { reject("참여자가 많습니다. 잠시 후 다시 시도해주세요."); return; }
         pending[key] = true;
         queue.push({ player: p, user: user, key: key, kind: kind, page: page || 1, argument: argument });
         process();
@@ -243,7 +293,7 @@ var PRIZE_CONFIG = {
         var effectType = typeof ObjectEffectType !== "undefined" ? ObjectEffectType.INTERACTION_WITH_ZEPSCRIPTS : 21;
         if (Number(obj.type) !== effectType || obj.text == null || obj.param1 == null) return;
         if (String(obj.text) !== C.objectNumber || String(obj.param1) !== C.objectValue) return;
-        enqueue(p, "draw");
+        openDraw(p);
     });
     App.onTriggerObject.Add(function (p, layer, x, y, key) {
         if (C.interactionMode !== "key" && C.interactionMode !== "position") return;
@@ -251,7 +301,7 @@ var PRIZE_CONFIG = {
         if (C.interactionMode === "position") {
             if (!object(pos) || layer !== pos.layer || x !== pos.x || y !== pos.y) return;
         } else if (key !== C.objectKey) return;
-        enqueue(p, "draw");
+        openDraw(p);
     });
     App.onSidebarTouched.Add(function (p) {
         tell(p, "맵의 경품 상호작용 오브젝트를 이용해 참여해주세요. !경품도움말");
@@ -266,5 +316,9 @@ var PRIZE_CONFIG = {
     });
     // 서버 이전 때 새 쓰기를 멈춥니다. 메모리를 재저장해 최신 원장을 덮어쓰지 않습니다.
     if (App.onMigrationStart && App.onMigrationStart.Add) App.onMigrationStart.Add(function () { fail("서버 이전 중입니다."); });
-    App.onDestroy.Add(function () { fail("앱이 종료되었습니다."); });
+    App.onLeavePlayer.Add(function (p) { closePopup(p); });
+    App.onDestroy.Add(function () {
+        fail("앱이 종료되었습니다.");
+        Object.keys(popups).forEach(function (key) { closePopup({ id: key }); });
+    });
 })(App, PRIZE_CONFIG);

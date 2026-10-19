@@ -12,7 +12,7 @@ function setup(options = {}) {
         setStorage(s) { writes++; if (options.throwWrite) throw Error('write failed'); if (!options.dropWrite) storage = s; },
         addOnKeyDown(key, fn) { listeners.key = fn; }
     };
-    ['onSay', 'onObjectTouched', 'onTriggerObject', 'onSidebarTouched', 'onJoinPlayer', 'onUpdate', 'onDestroy', 'onMigrationStart'].forEach(k => {
+    ['onSay', 'onObjectTouched', 'onTriggerObject', 'onSidebarTouched', 'onJoinPlayer', 'onLeavePlayer', 'onUpdate', 'onDestroy', 'onMigrationStart'].forEach(k => {
         App[k] = { Add(fn) { listeners[k] = fn; } };
     });
     class Clock extends Date { static now() { return now; } }
@@ -22,6 +22,12 @@ function setup(options = {}) {
     Object.assign(ctx.PRIZE_CONFIG, { drawMapId: 'map-a' }, options.config || {});
     function user(id = 1, extra = {}) {
         return Object.assign({ id, emailHash: 'hash-' + id, isGuest: false, role: 0, messages: [],
+            widgets: [],
+            showWidgetResponsive(file, ...margins) {
+                const w = { file, margins, packets: [], destroyed: false, sendMessage(data) { this.packets.push(JSON.parse(JSON.stringify(data))); },
+                    destroy() { this.destroyed = true; }, onMessage: { Add(fn) { w.receive = fn; } } };
+                this.widgets.push(w); return w;
+            },
             sendMessage(s) { this.messages.push(s); }, showConfirm(s, cb) { cb(); } }, extra);
     }
     function flush() {
@@ -30,7 +36,10 @@ function setup(options = {}) {
     }
     function settle() { for (let i = 0; i < 110; i++) { flush(); listeners.onUpdate(0.02); } flush(); }
     return { App, listeners, callbacks, user, flush, settle, ctx,
-        draw(p) { listeners.onObjectTouched(p, 10, 10, 0, { type: 21, text: '1001', param1: 'prize_draw' }); },
+        interact(p) { listeners.onObjectTouched(p, 10, 10, 0, { type: 21, text: '1001', param1: 'prize_draw' }); },
+        draw(p) { listeners.onObjectTouched(p, 10, 10, 0, { type: 21, text: '1001', param1: 'prize_draw' });
+            // 기존 원장 검증은 팝업을 바로 닫고 개인 메시지로 결과를 확인합니다.
+            const w = p.widgets.at(-1); if (w && !w.destroyed) w.receive(p, { type: 'close' }); },
         get storage() { return storage; }, set storage(s) { storage = s; },
         get state() { return JSON.parse(storage).zepPrizeDrawV1; }, get writes() { return writes; },
         setNow(value) { now = Date.parse(value); }
@@ -273,4 +282,40 @@ test('맵 확인은 일반 유저 거부, 런타임 ID가 없으면 추정하지
     const h = setup(), p = h.user(); command(h, p, '!경품맵확인'); assert.match(p.messages.join(''), /관리자 전용/);
     const a = h.user(99, { role: 3001 }); h.App.mapHashID = undefined;
     command(h, a, '!경품맵확인'); assert.match(a.messages.join(''), /확인할 수 없습니다/); assert.equal(h.writes, 0);
+});
+test('오브젝트 팝업에 저장 재조회 전에는 결과를 보내지 않음; ready로 결과 재전송', () => {
+    const h = setup(), p = h.user(); h.interact(p); const w = p.widgets[0];
+    assert.equal(w.file, 'prize-draw.html'); assert.equal(w.packets.length, 0);
+    w.receive(p, { type: 'ready' }); assert.equal(w.packets.at(-1).type, 'mixing');
+    h.callbacks.shift()(); assert.equal(h.writes, 1); assert.ok(!w.packets.some(p => p.type === 'result'));
+    h.flush(); assert.equal(w.packets.at(-1).type, 'result'); assert.equal(w.packets.at(-1).prize, '1등 경품');
+    w.receive(p, { type: 'ready' }); assert.equal(w.packets.at(-1).receipt, 'prize-event-2026-v1-R1-1');
+});
+test('열린 팝업 반복 접촉과 위젯 위조 메시지로 추가 추첨 불가', () => {
+    const h = setup(), p = h.user(); h.interact(p); h.interact(p); h.flush();
+    const w = p.widgets[0]; w.receive(p, { type: 'draw', rank: 'rank1' }); w.receive(p, { type: 'result', rank: 'rank1' });
+    w.receive(h.user(2), { type: 'close' }); h.flush();
+    assert.equal(p.widgets.length, 1); assert.equal(w.destroyed, false); assert.equal(h.writes, 1);
+});
+test('닫기 후 재접촉은 같은 당첨 결과 복구; 추가 경품 소모 없음', () => {
+    const h = setup(), p = h.user(); h.interact(p); h.flush(); const first = p.widgets[0];
+    first.receive(p, { type: 'close' }); h.interact(p); h.flush(); const next = p.widgets[1];
+    assert.equal(first.destroyed, true); assert.equal(next.packets.at(-1).repeated, true);
+    assert.equal(next.packets.at(-1).receipt, first.packets.at(-1).receipt); assert.equal(h.writes, 1);
+});
+test('팝업 생성 실패 시 경품은 소모하지 않음', () => {
+    const h = setup(), p = h.user(1, { showWidgetResponsive() { throw Error('missing asset'); } });
+    h.interact(p); h.flush(); assert.equal(h.writes, 0); assert.match(p.messages.join(''), /prize-draw.html/);
+});
+test('저장 누락/로그인 제한 안내는 팝업에 표시하고 당첨 결과는 보내지 않음', () => {
+    for (const drop of [false, true]) {
+        const h = setup({ dropWrite: drop }), p = h.user(1, { isGuest: !drop }); h.interact(p); h.flush();
+        assert.equal(p.widgets[0].packets.at(-1).type, 'notice'); assert.ok(!p.widgets[0].packets.some(x => x.type === 'result'));
+    }
+});
+test('나간 플레이어/앱 종료 시 팝업 정리, 늦은 위젯 메시지는 무시', () => {
+    const h = setup(), p = h.user(); h.interact(p); h.flush(); const w = p.widgets[0];
+    h.listeners.onLeavePlayer(p); assert.equal(w.destroyed, true); w.receive(p, { type: 'ready' });
+    h.interact(h.user(2)); h.listeners.onDestroy(); assert.equal(h.callbacks.length > 0, true); h.flush();
+    assert.equal(h.writes, 1);
 });
