@@ -79,8 +79,8 @@ test('같은 계정 재접속/팝업 재열기/재시작은 저장된 결과를 
 test('열린 팝업 반복 접촉과 닫기 중에도 추첨은 최대 한 번',()=>{
  const h=setup(),p=h.user();const w=openAndSpin(h,p);h.interact(p);assert.equal(p.widgets.length,1);w.receive(p,{type:'close'});h.flush();assert.equal(h.writes,1);assert.match(p.messages.join(''),/당첨!/);
 });
-test('다른 맵 및 게스트는 버튼 추첨 불가',()=>{
- for(const options of [{isGuest:true},{emailHash:''}]){const h=setup(),p=h.user(1,options);openAndSpin(h,p);h.flush();assert.equal(h.writes,0);assert.equal(p.widgets[0].packets.at(-1).type,'notice');}
+test('식별 정보가 없거나 다른 맵이면 버튼 추첨 불가',()=>{
+ for(const options of [{isGuest:true,emailHash:'',id:null},{emailHash:'',id:undefined}]){const h=setup(),p=h.user(1,options);openAndSpin(h,p);h.flush();assert.equal(h.writes,0);assert.equal(p.widgets[0].packets.at(-1).type,'notice');}
  const h=setup();h.App.mapHashID='other';h.interact(h.user());h.flush();assert.equal(h.writes,0);
 });
 test('오브젝트 타입/Number/Value 및 이전 key/좌표 모드 필터',()=>{
@@ -134,7 +134,7 @@ test('관리자 CSV 내보내기는 현재 원장 전체를 읽고 한글 BOM/�
     assert.equal(w.file, 'prize-export.html'); assert.equal(w.packets.length, 0);
     w.receive(a, { type: 'ready' }); const packet = w.packets.at(-1);
     assert.equal(packet.type, 'export'); assert.equal(packet.count, 1); assert.equal(packet.csv.charCodeAt(0), 0xfeff);
-    assert.match(packet.csv, /계정 이메일 해시/); assert.match(packet.csv, /hash-1/);
+    assert.match(packet.csv, /참여자 식별값/); assert.match(packet.csv, /hash-1/);
     assert.match(packet.csv, /2026-10-19 12:00:00/); assert.match(packet.csv, /prize-event-2026-v1-R1-1/);
     assert.equal(h.storage, before); assert.equal(h.writes, 1);
 });
@@ -164,4 +164,14 @@ test('초기화 후 내보내기는 새 회차만 포함; 이전 내려받기 �
     w.receive(a, { type: 'ready' }); assert.equal(w.packets.at(-1).count, 1); assert.equal(w.packets.at(-1).round, 1);
     command(h, a, '!당첨내보내기'); const next = a.widgets.at(-1); next.receive(a, { type: 'ready' });
     assert.equal(next.packets.at(-1).count, 0); assert.equal(next.packets.at(-1).round, 2);
+});
+
+test('게스트는 로그인/이메일 없이 추첨하고 같은 방문에서는 기존 결과 복구',()=>{
+ const h=setup(),p=h.user(101,{isGuest:true,emailHash:'',role:-1});h.draw(p);h.flush();assert.equal(h.writes,1);assert.ok(h.state.winners[0].user.startsWith('guest:'));h.interact(p);h.flush();assert.equal(p.widgets.at(-1).packets.at(-1).repeated,true);assert.equal(h.writes,1);
+});
+test('서로 다른 게스트 방문은 독립이며 이탈 후 같은 플레이어 ID도 새 방문 처리',()=>{
+ const h=setup(),p=h.user(101,{isGuest:true,emailHash:''}),q=h.user(102,{isGuest:true,emailHash:''});h.draw(p);h.flush();h.draw(q);h.flush();assert.equal(h.state.winners.length,2);assert.notEqual(h.state.winners[0].user,h.state.winners[1].user);h.listeners.onLeavePlayer(p);h.draw(p);h.flush();assert.equal(h.state.winners.length,3);assert.notEqual(h.state.winners[0].user,h.state.winners[2].user);
+});
+test('비로그인은 이메일 해시가 있어도 계정 키로 합치지 않고 CSV에 게스트 유형 표시',()=>{
+ const h=setup(),p=h.user(101,{isGuest:true,emailHash:'stale-hash'}),a=h.user(99,{role:3000});h.draw(p);h.flush();command(h,a,'!당첨내보내기');const w=a.widgets.at(-1);w.receive(a,{type:'ready'});assert.match(w.packets.at(-1).csv,/게스트/);assert.doesNotMatch(w.packets.at(-1).csv,/stale-hash/);assert.equal(h.state.winners[0].user.startsWith('guest:'),true);
 });

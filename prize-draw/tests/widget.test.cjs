@@ -14,6 +14,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  assert.equal(await page.locator('#spinButton').isEnabled(),true);assert.equal(await page.locator('#wheel path[data-rank]').count(),5);
  for(let i=1;i<=5;i++)assert.equal(await page.locator('#wheel text').nth(i-1).textContent(),i+'등');
  assert.match(await page.locator('#title').textContent(),/2026 용봉학술제.*AICOSS 이벤트/);
+ const popupText=await page.locator('.card').innerText();for(const removed of ['LUCKY ROULETTE','회차당 계정별 한 번의 행운','당첨 후 운영 안내','1등부터 5등까지','나의 경품은 무엇일까요','당첨 확률','5%'])assert.ok(!popupText.includes(removed),removed+' 삭제');
  await page.screenshot({path:path.join(__dirname,'../../prize-popup-desktop.jpg'),type:'jpeg',quality:85});
  await page.evaluate(()=>{window.spins=0;addEventListener('message',e=>{if(e.data?.type==='spin')window.spins++;});});
  await page.locator('#spinButton').click();await page.locator('#spinButton').evaluate(e=>e.click());assert.equal(await page.evaluate(()=>window.spins),1);
@@ -33,5 +34,13 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  }
  await page.goto(url);await deliver({type:'notice',message:'현재 추첨이 중지되어 있습니다.'});assert.equal(await page.locator('#result').isVisible(),false);assert.match(await page.locator('#statusText').textContent(),/중지/);
  await page.emulateMedia({reducedMotion:'reduce'});await page.goto(url);await deliver({type:'idle'});await page.locator('#spinButton').click();await deliver({...packet,prize:'<img src=x onerror=alert(1)>'});await page.waitForFunction(()=>!document.getElementById('result').hidden);assert.equal(await page.locator('#prize img').count(),0);
+
+ for(const [width,height] of [[320,568],[360,640],[375,667],[390,844],[430,932],[768,1024],[844,390]]){
+  await page.emulateMedia({reducedMotion:'reduce'});await page.setViewportSize({width,height});await page.goto(url);await deliver({type:'idle'});await page.waitForTimeout(50);
+  let fits=await page.locator('.card').evaluate(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&e.scrollWidth<=e.clientWidth+1;});if(!fits)console.log(await page.locator('.card').evaluate(e=>({rect:e.getBoundingClientRect().toJSON(),client:e.clientWidth,scroll:e.scrollWidth,viewport:[innerWidth,innerHeight],stage:document.querySelector('.wheel-stage').getBoundingClientRect().toJSON()})));assert.ok(fits,'모바일 가로 넘침 '+width+'x'+height);
+  const clickFits=await page.locator('#spinButton').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight+1;});assert.ok(clickFits,'버튼이 초기 화면 안에 표시 '+width+'x'+height);
+  await page.locator('#spinButton').click();await deliver(packet);await page.waitForFunction(()=>!document.getElementById('result').hidden);await page.waitForTimeout(50);
+  const resultFits=await page.locator('#result').evaluate(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1;});assert.ok(resultFits,'당첨 결과 화면 안에 표시 '+width+'x'+height);
+ }
  assert.deepEqual(errors,[]);await browser.close();server.close();console.log('Roulette browser checks passed: 5 sectors, button-only spin, 3-second deceleration, exact stop angle for every rank, confetti, mobile, replay, notice, reduced motion, text escaping.');
 })().catch(e=>{console.error(e);process.exit(1);});

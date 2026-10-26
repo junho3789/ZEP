@@ -32,6 +32,7 @@ var PRIZE_CONFIG = {
     var resetTickets = Object.create(null), ticketSerial = 0;
     var popups = Object.create(null);
     var exports = Object.create(null);
+    var guestIds = Object.create(null), guestSequence = 0;
     var hasOwn = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
     function object(o) { return o && typeof o === "object" && !Array.isArray(o); }
     function integer(n) { return typeof n === "number" && isFinite(n) && Math.floor(n) === n && n >= 0; }
@@ -60,13 +61,14 @@ var PRIZE_CONFIG = {
         return '"' + text.replace(/"/g, '""') + '"';
     }
     function exportWinners(p, data) {
-        var header = ["이벤트", "회차", "순번", "당첨번호", "등수", "경품명", "당첨일(KST)", "당첨시각(KST)", "계정 이메일 해시"];
+        var header = ["이벤트", "회차", "순번", "당첨번호", "등수", "경품명", "당첨일(KST)", "당첨시각(KST)", "참여자 식별값", "참여 유형"];
         var rows = [header];
         data.state.winners.forEach(function (w) {
             var r = rankById(w.rank);
             rows.push([C.eventId, "R" + data.state.round, w.no, C.eventId + "-R" + data.state.round + "-" + w.no,
                 r.name, C.prizeNames && C.prizeNames[w.rank] || r.name + " 경품", w.day,
-                new Date(w.at + 9 * 3600000).toISOString().slice(0, 19).replace("T", " "), w.user]);
+                new Date(w.at + 9 * 3600000).toISOString().slice(0, 19).replace("T", " "), w.user,
+                w.user.indexOf("guest:") === 0 ? "게스트" : "로그인 계정"]);
         });
         var csv = "\ufeff" + rows.map(function (row) { return row.map(csvCell).join(","); }).join("\r\n") + "\r\n";
         var now = Date.now(), safeName = C.eventId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60);
@@ -110,8 +112,13 @@ var PRIZE_CONFIG = {
     }
     function day(ms) { return new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10); }
     function identity(p) {
-        if (p.isGuest !== false || typeof p.emailHash !== "string" || !p.emailHash) return null;
-        return p.emailHash;
+        // 기존 로그인 당첨자의 해시 키는 유지합니다.
+        if (p.isGuest !== true && typeof p.emailHash === "string" && p.emailHash) return p.emailHash;
+        if ((typeof p.id !== "string" && typeof p.id !== "number") || String(p.id) === "") return null;
+        var key = String(p.id);
+        // 비로그인은 현재 방문 동안만 식별. 클라이언트가 제출한 ID는 사용하지 않습니다.
+        if (!guestIds[key]) guestIds[key] = "guest:" + Date.now().toString(36) + "-" + (++guestSequence).toString(36) + "-" + Math.floor(Math.random() * 1e12).toString(36);
+        return guestIds[key];
     }
     function checkConfig() {
         if (!C.eventId || !C.drawMapId || C.drawMapId === "REPLACE_WITH_MAP_HASH_ID") throw Error("eventId와 drawMapId를 설정하세요.");
@@ -239,7 +246,7 @@ var PRIZE_CONFIG = {
                 if (job.kind === "winners") {
                     var start = (job.page - 1) * 10;
                     var rows = data.state.winners.slice(start, start + 10).map(function (w) {
-                        return "#" + w.no + " | " + rankById(w.rank).name + " | " + w.day + " | 계정해시 " + w.user;
+                        return "#" + w.no + " | " + rankById(w.rank).name + " | " + w.day + " | 참여자 " + w.user;
                     });
                     finish(job, "R" + data.state.round + " 당첨 기록 " + job.page + "페이지\n" + (rows.join("\n") || "기록 없음")); return;
                 }
@@ -292,7 +299,7 @@ var PRIZE_CONFIG = {
         if (stopped) { reject("추첨 점검 중입니다. 관리자에게 문의하세요."); return; }
         if (kind !== "draw" && kind !== "view" && !(p.role >= 3000)) { tell(p, "관리자 전용 명령입니다."); return; }
         var user = identity(p);
-        if (kind === "draw" && !user) { reject("ZEP 로그인 후 참여해주세요. 계정 식별 정보를 확인할 수 없습니다."); return; }
+        if (kind === "draw" && !user) { reject("플레이어 식별 정보를 확인할 수 없습니다. 맵에 다시 입장해주세요."); return; }
         var key = kind === "draw" ? "draw:" + user : (kind === "view" ? "view:" : "admin:") + String(p.id);
         if (pending[key]) { reject("이전 요청 처리 중입니다."); return; }
         if (queue.length >= C.maxQueue) { reject("참여자가 많습니다. 잠시 후 다시 시도해주세요."); return; }
@@ -352,7 +359,7 @@ var PRIZE_CONFIG = {
     });
     // 서버 이전 때 새 쓰기를 멈춥니다. 메모리를 재저장해 최신 원장을 덮어쓰지 않습니다.
     if (App.onMigrationStart && App.onMigrationStart.Add) App.onMigrationStart.Add(function () { fail("서버 이전 중입니다."); });
-    App.onLeavePlayer.Add(function (p) { closePopup(p); closeExport(p); });
+    App.onLeavePlayer.Add(function (p) { closePopup(p); closeExport(p); delete guestIds[String(p.id)]; });
     App.onDestroy.Add(function () {
         fail("앱이 종료되었습니다.");
         Object.keys(popups).forEach(function (key) { closePopup({ id: key }); });
