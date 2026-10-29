@@ -1,6 +1,7 @@
 // 현장 확인용 룰렛: 영구 저장/당첨 원장/CSV/계정별 기록 없음.
 var PRIZE_CONFIG = {
     drawMapId: "REPLACE_WITH_MAP_HASH_ID", // 관리자 !경품맵확인으로 확인
+    autoOpenOnJoin: true, // 지정 맵 입장 시 팝업 자동 표시. 추첨은 버튼을 누를 때 실행.
     interactionMode: "editor",
     objectNumber: "1001",
     objectValue: "prize_draw",
@@ -127,7 +128,7 @@ var PRIZE_CONFIG = {
     }
     App.onSay.Add(function (p, text) {
         text = String(text).trim();
-        if (text === "!경품도움말") { tell(p, "오브젝트 → 룰렛 돌리기. 팝업을 닫고 다시 열면 새 추첨입니다.\n관리자: !경품맵확인 / !경품현황 / !경품중지 / !경품시작 / !경품재개"); return; }
+        if (text === "!경품도움말") { tell(p, "맵 입장 → 자동 팝업 → 룰렛 돌리기. 닫은 뒤에는 오브젝트로 다시 열 수 있습니다.\n관리자: !경품맵확인 / !경품현황 / !경품중지 / !경품시작 / !경품재개"); return; }
         if (text === "!추첨") { tell(p, "맵의 경품 상호작용 오브젝트로 참여해주세요."); return; }
         if (["!경품맵확인", "!경품현황", "!경품중지", "!경품시작", "!경품재개", "!경품초기화", "!당첨내보내기"].indexOf(text) < 0 && !/^!당첨목록(?:\s|$)/.test(text)) return;
         if (!(p.role >= 3000)) { tell(p, "관리자 전용 명령입니다."); return; }
@@ -163,7 +164,10 @@ var PRIZE_CONFIG = {
             if (pos && pos.layer === layer && pos.x === x && pos.y === y) open(p);
         }
     });
-    App.onSidebarTouched.Add(function (p) { tell(p, "맵의 경품 상호작용 오브젝트로 참여해주세요."); });
+    App.onJoinPlayer.Add(function (p) {
+        if (C.autoOpenOnJoin !== false && typeof C.drawMapId === "string" && String(App.mapHashID) === C.drawMapId) open(p);
+    });
+    App.onSidebarTouched.Add(function (p) { tell(p, "입장 시 열린 팝업 또는 맵의 경품 상호작용 오브젝트로 참여해주세요."); });
     App.onLeavePlayer.Add(close);
     App.onDestroy.Add(function () { Object.keys(sessions).forEach(function (id) { close({ id: id }); }); });
 })(App, PRIZE_CONFIG);
