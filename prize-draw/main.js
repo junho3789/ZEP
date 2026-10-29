@@ -7,13 +7,11 @@ var PRIZE_CONFIG = {
     objectValue: "prize_draw",
     objectKey: "prize_draw",
     objectPosition: null,
-    prizeNames: { rank1: "1등 경품", rank2: "2등 경품", rank3: "3등 경품", rank4: "4등 경품", rank5: "5등 경품" },
+    prizeNames: { rank1: "1등 경품", rank2: "2등 경품", rank3: "3등 경품" },
     ranks: [
         { id: "rank1", name: "1등", probability: 5 },
         { id: "rank2", name: "2등", probability: 10 },
-        { id: "rank3", name: "3등", probability: 15 },
-        { id: "rank4", name: "4등", probability: 20 },
-        { id: "rank5", name: "5등", probability: 50 }
+        { id: "rank3", name: "3등", probability: 85 }
     ]
 };
 
@@ -50,7 +48,7 @@ var PRIZE_CONFIG = {
             var pos = C.objectPosition;
             if (!pos || [3, 5].indexOf(pos.layer) < 0 || !Number.isInteger(pos.x) || pos.x < 0 || !Number.isInteger(pos.y) || pos.y < 0) throw Error("오브젝트 좌표를 확인해주세요.");
         }
-        if (!Array.isArray(C.ranks) || C.ranks.length !== 5) throw Error("등수는 5개로 설정해주세요.");
+        if (!Array.isArray(C.ranks) || C.ranks.length !== 3) throw Error("등수는 3개로 설정해주세요.");
         var ids = Object.create(null), total = 0;
         var ranks = C.ranks.map(function (r, i) {
             if (!r || typeof r.id !== "string" || !r.id || ids[r.id] || typeof r.name !== "string" || !r.name ||
