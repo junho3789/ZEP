@@ -1,5 +1,6 @@
-// 현장 확인용 룰렛: 영구 저장/당첨 원장/CSV/계정별 기록 없음.
+// 현장 확인용 룰렛: 서버 저장/CSV 없음. 브라우저별 참여 기록은 위젯에서 보관.
 var PRIZE_CONFIG = {
+    participationKey: "aicoss-yongbong-2026-v1", // 같은 행사 동안 유지. 변경하면 새 행사로 취급.
     drawMapId: "REPLACE_WITH_MAP_HASH_ID", // 관리자 !경품맵확인으로 확인
     autoOpenOnJoin: true, // 지정 맵 입장 시 팝업 자동 표시. 추첨은 버튼을 누를 때 실행.
     interactionMode: "editor",
@@ -28,6 +29,10 @@ var PRIZE_CONFIG = {
     function send(session, packet) {
         try { session.widget.sendMessage(packet); return true; } catch (_) { return false; }
     }
+    function eventKey() {
+        if (typeof C.participationKey !== "string" || !C.participationKey) throw Error("participationKey를 설정해주세요.");
+        return C.participationKey + ":" + String(App.spaceHashID || "") + ":" + String(App.mapHashID || "");
+    }
     function close(p) {
         var id = key(p); if (id === null) return;
         var session = sessions[id]; delete sessions[id];
@@ -35,10 +40,12 @@ var PRIZE_CONFIG = {
     }
     function notice(session, message) {
         session.phase = "error";
-        session.packet = { type: "notice", message: message };
+        session.packet = { type: "notice", message: message, notDrawn: true };
+        try { session.packet.eventKey = eventKey(); } catch (_) {}
         send(session, session.packet);
     }
     function settings() {
+        eventKey();
         if (typeof C.drawMapId !== "string" || !C.drawMapId || C.drawMapId === "REPLACE_WITH_MAP_HASH_ID") throw Error("drawMapId를 설정해주세요. 관리자 !경품맵확인으로 확인할 수 있습니다.");
         if (String(App.mapHashID) !== C.drawMapId) throw Error("지정된 추첨 맵에서 이용해주세요.");
         if (["editor", "key", "position"].indexOf(C.interactionMode) < 0) throw Error("오브젝트 연결 모드를 확인해주세요.");
@@ -66,12 +73,15 @@ var PRIZE_CONFIG = {
             var ranks = settings();
             if (paused) { notice(session, "현재 추첨이 중지되어 있습니다. 잠시 후 다시 확인해주세요."); return; }
             session.phase = "idle";
-            session.packet = { type: "idle", ranks: labels(ranks) };
+            session.packet = { type: "idle", eventKey: eventKey(), ranks: labels(ranks) };
             send(session, session.packet);
         } catch (error) { notice(session, error.message || "설정을 확인한 뒤 다시 시도해주세요."); }
     }
-    function spin(session) {
+    function spin(session, data) {
         if (session.phase !== "idle") return;
+        if (!data || typeof data.claimToken !== "string" || !data.claimToken || data.claimToken.length > 160) {
+            notice(session, "브라우저 참여 확인을 완료한 후 다시 시도해주세요."); return;
+        }
         session.phase = "drawing";
         try {
             if (paused) { notice(session, "현재 추첨이 중지되어 있습니다. 잠시 후 다시 확인해주세요."); return; }
@@ -84,7 +94,8 @@ var PRIZE_CONFIG = {
                 if (pick < 0) { selected = ranks[i]; break; }
             }
             if (!selected) selected = ranks.filter(function (r) { return r.probability > 0; }).slice(-1)[0];
-            var packet = { type: "result", rank: selected.name, ball: selected.ball, prize: selected.prize, ranks: labels(ranks) };
+            var packet = { type: "result", eventKey: eventKey(), claimToken: data.claimToken,
+                rank: selected.name, ball: selected.ball, prize: selected.prize, ranks: labels(ranks) };
             session.phase = "result"; session.packet = packet;
             send(session, { type: "mixing" });
             send(session, packet);
@@ -111,7 +122,7 @@ var PRIZE_CONFIG = {
                         if (session.phase === "result") send(session, { type: "mixing" });
                         send(session, session.packet);
                     }
-                    else if (data.type === "spin") spin(session);
+                    else if (data.type === "spin") spin(session, data);
                     else if (data.type === "retry") {
                         if (session.phase === "result") {
                             send(session, { type: "mixing" }); send(session, session.packet);
@@ -141,7 +152,7 @@ var PRIZE_CONFIG = {
             tell(p, "추첨을 재개했습니다. 저장 초기화는 필요 없습니다."); return;
         }
         if (text === "!경품현황") {
-            try { var ranks = settings(); tell(p, (paused ? "추첨 중지" : "추첨 진행") + " / 기록 저장 안 함 / 재고·일일 한도 없음\n" + ranks.map(function (r) { return r.name + ": " + r.probability + "%"; }).join("\n")); }
+            try { var ranks = settings(); tell(p, (paused ? "추첨 중지" : "추첨 진행") + " / 같은 브라우저 1회 참여 / 서버 기록·재고·일일 한도 없음\n" + ranks.map(function (r) { return r.name + ": " + r.probability + "%"; }).join("\n")); }
             catch (error) { tell(p, "설정 확인 필요: " + error.message + "\n앱은 오류로 정지되지 않으며 수정 후 다음 요청부터 적용됩니다."); }
             return;
         }
