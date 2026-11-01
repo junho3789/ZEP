@@ -22,7 +22,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.5.3-stamp-size';
+  var VERSION = '1.5.4-logo';
   var sessions = [];
 
   // 설정과 공통 함수

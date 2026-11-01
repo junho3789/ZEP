@@ -445,7 +445,7 @@ test('expanded stamps and mini icon embed the same PNG instead of relative file 
   const mini = fs.readFileSync(__dirname + '/stamp-mini.html', 'utf8');
   const prefix = 'data:image/png;base64,';
   assert.ok(full.includes(prefix) && mini.includes(prefix));
-  const fullImage = full.split(prefix)[1].split(String.fromCharCode(39))[0];
+  const fullImage = full.split('<script>')[1].split(prefix)[1].split(String.fromCharCode(39))[0];
   const miniImage = mini.split(prefix)[1].split(String.fromCharCode(34))[0];
   assert.ok(fullImage.startsWith('iVBORw0KGgo'));
   assert.ok(fullImage.length > 10000);
