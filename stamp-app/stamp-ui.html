@@ -3,254 +3,112 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEW:TURN 스탬프 투어</title>
 <style>
-* {
-  box-sizing:border-box
-}
-html,body {
-  margin:0;
-  width:100%;
-  height:100%;
-  overflow:hidden;
-  background:transparent;
-  font-family:system-ui,-apple-system,'Malgun Gothic',sans-serif;
-  color:#302e40
-}
-body {
-  position:relative
-}
-main {
-  position:absolute;
-  top:5px;
-  left:5px;
-  width:calc(100% - 10px);
-  transform-origin:top left;
-  max-width:320px;
-  background:#fff;
-  border:1px solid #e8e5f2;
-  border-radius:16px;
-  box-shadow:0 4px 15px #29213e1a;
-  overflow:hidden
-}
-button {
-  font:inherit;
-  cursor:pointer
-}
-header button {
-  width:100%;
-  border:0;
-  background:white;
-  display:flex;
-  align-items:center;
-  gap:9px;
-  padding:15px;
-  text-align:left;
-  color:inherit
-}
-.icon {
-  background:#eee8ff;
-  color:#7851db;
-  border-radius:10px;
-  padding:7px;
-  font-size:17px
-}
-.title {
-  font-weight:750;
-  font-size:14px;
-  flex:1
-}
-.count {
-  font-size:13px;
-  font-weight:750;
-  color:#7851db
-}
-.chevron {
-  color:#9891a6
-}
-section {
-  padding:0 16px 16px
-}
-p {
-  font-size:12px;
-  color:#8a8499;
-  line-height:1.6;
-  margin:0 0 12px
-}
-.track {
-  height:5px;
-  background:#f0edf7;
-  border-radius:8px;
-  overflow:hidden;
-  margin-bottom:17px
-}
-.fill {
-  height:100%;
-  background:#8b62e7;
-  transition:width .3s
-}
-.grid {
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:16px 12px
-}
-.item {
-  text-align:center;
-  min-width:0
-}
-.stamp {
-  margin:0 auto 7px;
-  border:2px dashed #ddd6ed;
-  border-radius:50%;
-  width:58px;
-  height:58px;
-  display:grid;
-  place-items:center;
-  color:#c5bcd9;
-  background:#faf9fd;
-  font-size:24px;
-  font-weight:800
-}
-.done .stamp {
-  background:#f0e9ff;
-  color:#8152df;
-  border:3px double #a483eb;
-  transform:rotate(-9deg)
-}
-.name {
-  font-size:12px;
-  overflow-wrap:anywhere
-}
-.label {
-  font-size:10px;
-  color:#a19aac;
-  margin-top:3px
-}
-.done .label {
-  color:#8256d7
-}
-.footer {
-  margin-top:17px;
-  border-radius:9px;
-  padding:10px;
-  text-align:center;
-  background:#f7f5fb;
-  color:#8d849c;
-  font-size:12px;
-  line-height:1.6
-}
-.complete {
-  background:#efe8ff;
-  color:#7548cb
-}
-body.compact section {
-  display:none
-}
-body.compact header button {
-  padding:8px;
-  gap:5px
-}
-body.compact .icon {
-  display:none
-}
-body.compact .title {
-  font-size:12px
-}
-[hidden] {
-  display:none!important
-}
-@media(max-width:210px) {
-  header button {
-    padding:9px;
-    gap:5px
-  }
-  .title {
-    font-size:12px
-  }
-  .icon {
-    display:none
-  }
-  section {
-    padding:0 9px 12px
-  }
-  .stamp {
-    width:44px;
-    height:44px
-  }
-  .grid {
-    gap:10px
-  }
-}
+:root{--lime:#dfff45;--blue:#0670ff;--ink:#171717;--paper:#fffef8}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;color:var(--ink);font-family:system-ui,-apple-system,'Malgun Gothic',sans-serif}
+body{position:relative}
+button{font:inherit;cursor:pointer}
+button:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+main{position:absolute;left:5px;top:5px;width:calc(100% - 20px);max-width:340px;transform-origin:top left;background:var(--lime);border:2px solid var(--ink);border-radius:18px;box-shadow:6px 6px 0 var(--blue);overflow:hidden}
+header{padding:18px 18px 14px;border-bottom:2px solid var(--ink)}
+.eyebrow{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:9px;font-weight:900;letter-spacing:1.2px}
+.eyebrow span:last-child{border:1px solid var(--ink);border-radius:20px;padding:3px 7px;font-size:8px}
+.heading{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px}
+.brand{font-size:34px;font-weight:1000;letter-spacing:-2px;line-height:1;text-shadow:2px 2px 0 var(--blue);margin:0}
+#toggle{flex-shrink:0;width:30px;height:30px;border:2px solid var(--ink);border-radius:50%;background:var(--ink);color:var(--lime);font-size:22px;line-height:1;display:grid;place-items:center}
+.subtitle{margin:10px 0 0;font-size:13px;font-weight:800}
+#content{padding:16px}
+.progress-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.progress-heading h1{font-size:14px;margin:0;font-weight:850}
+.count{white-space:nowrap;font-size:27px;font-weight:950;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:var(--blue)}
+.count small{color:var(--ink);font-size:13px;letter-spacing:0}
+.track{height:9px;background:#fff9;border:1.5px solid var(--ink);border-radius:12px;overflow:hidden}
+.fill{height:100%;background:var(--blue);transition:width .25s}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+.item{position:relative;min-width:0;text-align:center;background:#f7ffd4;border:1.5px dashed #8d9c43;border-radius:13px;padding:12px 7px 10px}
+.stamp{position:relative;display:grid;place-items:center;width:100%;height:76px}
+.stamp img{display:block;width:100%;height:100%;object-fit:contain;filter:grayscale(1);opacity:.16}
+.item-number{position:absolute;left:8px;top:6px;font-size:9px;font-weight:900;color:#7b854a}
+.name{font-size:11px;line-height:1.4;font-weight:800;overflow-wrap:anywhere;margin-top:7px}
+.label{font-size:9px;color:#717a46;margin-top:5px;font-weight:750;letter-spacing:.3px}
+.done{background:var(--paper);border:1.5px solid var(--ink);box-shadow:2px 2px 0 var(--ink)}
+.done .stamp img{filter:none;opacity:1}
+.done .item-number{color:var(--blue)}
+.done .label{display:inline-block;color:white;background:var(--blue);padding:3px 7px;border-radius:12px}
+.footer{margin-top:15px;padding:11px 10px;border:1.5px solid var(--ink);border-radius:10px;font-size:11px;line-height:1.6;text-align:center;font-weight:750;background:var(--ink);color:var(--lime)}
+.footer.complete{background:var(--blue);color:white}
+.bottom-line{display:flex;justify-content:space-between;margin-top:12px;font-size:8px;letter-spacing:1px;font-weight:900}
+body.compact #content,.collapsed #content{display:none}
+body.compact header{padding:10px}
+body.compact .eyebrow,body.compact .subtitle{display:none}
+body.compact .heading{margin-top:0}
+body.compact .brand{font-size:24px}
+@media(max-width:230px){header{padding:12px}.brand{font-size:28px}#content{padding:11px}.stamp{height:60px}.grid{gap:7px}.item{padding:10px 5px 8px}.eyebrow{font-size:7px;letter-spacing:.4px}.eyebrow span:last-child{font-size:6px}.subtitle{font-size:11px}}
+@media(prefers-reduced-motion:reduce){.fill{transition:none}}
+[hidden]{display:none!important}
 </style>
 </head>
 <body>
 <main>
 <header>
-<button id="toggle" aria-expanded="true" aria-controls="content">
-<span class="icon" aria-hidden="true">✦</span>
-<span class="title">스탬프 수집</span>
-<span class="count" id="count">…</span>
-<span class="chevron" id="arrow">⌃</span>
-</button>
+<div class="eyebrow"><span>E²FESTA 2026</span><span>STAMP TOUR</span></div>
+<div class="heading"><p class="brand">NEW:TURN</p><button id="toggle" title="스탬프 창 접기" aria-label="스탬프 창 접기" aria-expanded="true" aria-controls="content">−</button></div>
+<p class="subtitle">오늘의 도전이 내일의 전환점!</p>
 </header>
 <section id="content">
-<p id="intro">오브젝트에서 F키를 눌러<br>스탬프를 모아보세요!</p>
-<div class="track">
-<div class="fill" id="fill" style="width:0">
-</div>
-</div>
-<div class="grid" id="grid">
-</div>
+<div class="progress-heading"><h1>스탬프 수집</h1><div class="count" aria-live="polite"><span id="count">0</span><small> / <span id="required">4</span></small></div></div>
+<div class="track" role="progressbar" aria-label="스탬프 수집 진행률" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0"><div class="fill" id="fill" style="width:0"></div></div>
+<div class="grid" id="grid"></div>
 <div class="footer" id="footer" role="status" aria-live="polite">수집 기록을 불러오는 중…</div>
+<div class="bottom-line"><span>IDEAS · PEOPLE</span><span>POSSIBILITIES ↗</span></div>
 </section>
 </main>
 <script>
-
 (function () {
+  'use strict';
   var parentWindow = window.parent;
   var card = document.querySelector('main');
-  var currentState = null;
-  var fitScheduled = false;
   var toggle = document.getElementById('toggle');
-  var content = document.getElementById('content');
-  var count = document.getElementById('count');
-  var arrow = document.getElementById('arrow');
-  var fill = document.getElementById('fill');
   var grid = document.getElementById('grid');
   var footer = document.getElementById('footer');
+  var currentState = null;
+  var fitScheduled = false;
 
-  function post(type) {
-    parentWindow.postMessage({ type: type }, '*');
-  }
+  function post(type) { parentWindow.postMessage({type:type}, '*'); }
 
   function createElement(tag, className, text) {
     var element = document.createElement(tag);
     element.className = className;
-    element.textContent = text;
+    if (text !== undefined) element.textContent = text;
     return element;
   }
 
   function renderStamp(object, index) {
-    var item = document.createElement('div');
-    item.className = 'item' + (object.collected ? ' done' : '');
+    var item = createElement('div', 'item' + (object.collected ? ' done' : ''));
+    var stamp = createElement('div', 'stamp');
+    var image = document.createElement('img');
+    image.src = 'newton-stamp.png';
+    image.alt = '';
+    image.draggable = false;
+    stamp.append(image);
     item.append(
-      createElement('div', 'stamp', object.collected ? '✓' : String(index + 1)),
+      createElement('span', 'item-number', String(index + 1).padStart(2, '0')),
+      stamp,
       createElement('div', 'name', object.name),
-      createElement('div', 'label', object.collected ? '수집 완료' : '미수집')
+      createElement('div', 'label', object.collected ? '✓ 수집 완료' : '미수집')
     );
     grid.append(item);
   }
 
-  // 위젯의 실제 표시 영역에 맞춰 카드 전체를 축소해 내용 잘림을 방지합니다.
   function fitCard() {
     fitScheduled = false;
-    var width = Math.max(1, window.innerWidth - 10);
-    var height = Math.max(1, window.innerHeight - 10);
-    var compact = window.innerHeight < 140 || window.innerWidth < 140;
+    var width = Math.max(1, window.innerWidth - 16);
+    var height = Math.max(1, window.innerHeight - 16);
+    var compact = window.innerHeight < 140 || window.innerWidth < 120;
     document.body.classList.toggle('compact', compact);
-    var collapsed = compact || !!(currentState && currentState.collapsed);
-    toggle.setAttribute('aria-expanded', String(!collapsed));
-    arrow.textContent = collapsed ? '⌄' : '⌃';
-    toggle.title = compact ? '창 크기를 늘리면 개별 스탬프를 볼 수 있습니다.' : '스탬프 현황 접기/펼치기';
+    toggle.setAttribute('aria-expanded', String(!compact && !(currentState && currentState.collapsed)));
     var scale = Math.min(1, width / Math.max(1, card.offsetWidth), height / Math.max(1, card.offsetHeight));
     card.style.transform = 'scale(' + scale + ')';
   }
@@ -263,59 +121,53 @@ body.compact .title {
 
   function renderState(state) {
     currentState = state;
-    content.hidden = !!state.collapsed;
-    requestFit();
+    card.classList.toggle('collapsed', !!state.collapsed);
     grid.replaceChildren();
-
     if (state.error) {
-      count.textContent = '확인 불가';
-      footer.textContent = state.error;
+      document.getElementById('count').textContent = '—';
+      document.getElementById('required').textContent = '—';
+      document.getElementById('fill').style.width = '0';
       footer.className = 'footer';
-      fill.style.width = '0';
+      footer.textContent = state.error;
+      document.querySelector('.track').setAttribute('aria-valuenow', '0');
+      requestFit();
       return;
     }
-
-    count.textContent = state.count + '/' + state.required;
-    fill.style.width = Math.min(100, state.count / state.required * 100) + '%';
+    document.getElementById('count').textContent = String(state.count).padStart(2, '0');
+    document.getElementById('required').textContent = String(state.required).padStart(2, '0');
+    document.getElementById('fill').style.width = Math.min(100, state.count / state.required * 100) + '%';
+    document.querySelector('.track').setAttribute('aria-valuemax', String(state.required));
+    document.querySelector('.track').setAttribute('aria-valuenow', String(state.count));
     state.objects.forEach(renderStamp);
-
     var complete = state.count >= state.required;
     footer.className = 'footer' + (complete ? ' complete' : '');
     footer.textContent = complete
-      ? '모두 모았어요! 안내데스크에서 응모하세요.'
-      : '스탬프 ' + state.required + '개를 모으면 이벤트 응모 가능';
+      ? '수집 완료! 안내데스크에서 이벤트에 응모하세요.'
+      : '오브젝트에서 F키로 참여하고 스탬프 ' + state.required + '개를 모아보세요.';
+    requestFit();
   }
 
-  // 수집 UI에 남은 포커스가 맵의 방향키 입력을 가로채지 않게 반환합니다.
-  // 외부 프로그램/구글폼의 입력창에는 관여하지 않습니다.
   function releaseFocus() {
-    if (document.activeElement && document.activeElement.blur) {
-      document.activeElement.blur();
-    }
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     try { parentWindow.focus(); } catch (error) {}
   }
 
-  toggle.onclick = function () {
-    releaseFocus();
-    post('toggle');
-  };
+  toggle.onclick = function () { releaseFocus(); post('toggle'); };
   document.addEventListener('pointerup', releaseFocus);
   document.documentElement.addEventListener('mouseleave', releaseFocus);
   document.addEventListener('keydown', function (event) {
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Escape'].indexOf(event.key) >= 0) {
-      releaseFocus();
-    }
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Escape'].indexOf(event.key) >= 0) releaseFocus();
   });
   window.addEventListener('message', function (event) {
     if (event.source !== parentWindow || !event.data || event.data.type !== 'state') return;
     renderState(event.data);
   });
   window.addEventListener('resize', requestFit);
-  if (typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(requestFit).observe(card);
-  }
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(requestFit).observe(card);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(requestFit);
   requestFit();
   post('ready');
 }());
-</script></body></html>
+</script>
+</body>
+</html>

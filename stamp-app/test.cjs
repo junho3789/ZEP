@@ -22,6 +22,7 @@ function createApp() {
     save() {},
     sendMessage: text => messages.push(text),
     openWebLink: (...args) => links.push(args),
+    showWidget(...args) { return this.showWidgetResponsive(...args); },
     showWidgetResponsive(...args) {
       const widget = {
         args, dead: false,
@@ -101,7 +102,7 @@ test('collapse removes old HUD and ignores messages from stale widget', () => {
   app.ready();
   assert.equal(old.dead, true);
   assert.equal(app.widgets.at(-1).state.collapsed, true);
-  assert.equal(app.widgets.at(-1).args[3], 83);
+  assert.deepEqual(app.widgets.at(-1).args, ['stamp-mini.html', 'topleft', 76, 76]);
   old.receive(app.player, { type: 'toggle' });
   assert.equal(app.widgets.length, 2);
 });
@@ -351,4 +352,55 @@ test('save failures report partial results and restore failed player storage', (
   assert.deepEqual(savedIds(app.player), []);
   assert.equal(failing.storage, before);
   assert.ok(app.messages.at(-1).includes('처리 1명, 실패/퇴장 1명'));
+});
+
+test('mini icon keeps progress and expands without changing stored stamps', () => {
+  const app = createApp();
+  app.hit(201, 'stamp:1');
+  app.widgets.at(-1).receive(app.player, {type:'toggle'});
+  app.ready();
+  const mini = app.widgets.at(-1);
+  assert.equal(mini.args[0], 'stamp-mini.html');
+  assert.equal(mini.state.count, 1);
+  app.hit(202, 'stamp:2');
+  assert.equal(mini.state.count, 2);
+  const saved = app.player.storage;
+  mini.receive(app.player, {type:'toggle'});
+  app.ready();
+  assert.equal(app.widgets.at(-1).args[0], 'stamp-ui.html');
+  assert.equal(app.widgets.at(-1).state.count, 2);
+  assert.equal(app.player.storage, saved);
+});
+test('chat command expands the mini icon', () => {
+  const app = createApp();
+  app.widgets.at(-1).receive(app.player, {type:'toggle'});
+  app.ready();
+  app.events.onSay(app.player, '!stamps');
+  app.ready();
+  assert.equal(app.widgets.at(-1).state.collapsed, false);
+  assert.equal(app.widgets.at(-1).args[0], 'stamp-ui.html');
+});
+
+test('mini icon click reopens window and progress stays in accessible label only', () => {
+  const html = fs.readFileSync(__dirname + '/stamp-mini.html', 'utf8');
+  const script = html.split('<script>')[1].split('</script>')[0];
+  const sent = [];
+  let listener, blurred = 0, focused = 0;
+  const attributes = {};
+  const launcher = {
+    blur(){ blurred++; },
+    classList:{ toggle(name,enabled){ attributes[name]=enabled; } },
+    setAttribute(name,value){ attributes[name]=value; }
+  };
+  const parent = { postMessage(data){sent.push(data);}, focus(){focused++;} };
+  const document = {getElementById(){return launcher;}};
+  vm.runInNewContext(script,{document,window:{parent,addEventListener(type,fn){listener=fn;}}});
+  listener({source:parent,data:{type:'state',count:2,required:4}});
+  assert.ok(attributes['aria-label'].includes('2/4'));
+  launcher.onclick();
+  assert.equal(sent.at(-1).type,'toggle');
+  assert.equal(blurred,1);
+  assert.equal(focused,1);
+  listener({source:parent,data:{type:'state',count:4,required:4}});
+  assert.equal(attributes.complete,true);
 });

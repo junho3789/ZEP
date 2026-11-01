@@ -8,7 +8,9 @@ var CONFIG = {
   deskNumber: '205',
   deskValue: 'stamp:desk',
   // 화면 대비 % 여백. 접으면 아래쪽 여백을 늘려 위젯 높이를 줄입니다.
-  ui: { top: 8, right: 62, bottom: 42, left: 7, collapsedBottom: 83 },
+  ui: { top: 8, right: 62, bottom: 20, left: 7 },
+  // 접었을 때 좌측 상단 76×76px 영역에 뉴턴 아이콘만 표시합니다.
+  minimized: { align: 'topleft', width: 76, height: 76 },
   objects: [
     { id: 's1', number: '201', value: 'stamp:1', name: '프로그램 1', url: '', enabled: true },
     { id: 's2', number: '202', value: 'stamp:2', name: '프로그램 2', url: '', enabled: true },
@@ -20,7 +22,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.4-responsive';
+  var VERSION = '1.5-newturn';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -139,10 +141,12 @@ var CONFIG = {
     }
     session.ready = false;
     var layout = CONFIG.ui;
-    var bottom = session.collapsed ? layout.collapsedBottom : layout.bottom;
-    var widget = session.player.showWidgetResponsive(
-      'stamp-ui.html', layout.top, layout.right, bottom, layout.left
-    );
+    var mini = CONFIG.minimized;
+    var widget = session.collapsed
+      ? session.player.showWidget('stamp-mini.html', mini.align, mini.width, mini.height)
+      : session.player.showWidgetResponsive(
+        'stamp-ui.html', layout.top, layout.right, layout.bottom, layout.left
+      );
     session.widget = widget;
     widget.onMessage.Add(function (sender, data) {
       if (sender !== session.player || session.widget !== widget || !data) return;
@@ -372,7 +376,10 @@ var CONFIG = {
       var progress = readProgress(player);
       notify(player, '수집 현황 ' + countCollected(progress) + '/' + CONFIG.requiredStamps);
       var session = findSession(player);
-      if (session) showHud(session);
+      if (session) {
+        session.collapsed = false;
+        showHud(session);
+      }
     } catch (error) {
       notify(player, '기록을 읽지 못했습니다.');
     }
