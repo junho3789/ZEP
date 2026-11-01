@@ -439,3 +439,17 @@ test('destroy exception preserves expanded state and the next click can retry', 
   assert.equal(app.widgets.at(-1).args[0],'stamp-mini.html');
   assert.equal(app.widgets.at(-1).state.collapsed,true);
 });
+
+test('expanded stamps and mini icon embed the same PNG instead of relative file URLs', () => {
+  const full = fs.readFileSync(__dirname + '/stamp-ui.html', 'utf8');
+  const mini = fs.readFileSync(__dirname + '/stamp-mini.html', 'utf8');
+  const prefix = 'data:image/png;base64,';
+  assert.ok(full.includes(prefix) && mini.includes(prefix));
+  const fullImage = full.split(prefix)[1].split(String.fromCharCode(39))[0];
+  const miniImage = mini.split(prefix)[1].split(String.fromCharCode(34))[0];
+  assert.ok(fullImage.startsWith('iVBORw0KGgo'));
+  assert.ok(fullImage.length > 10000);
+  assert.equal(fullImage,miniImage);
+  assert.ok(!full.includes('newton-stamp.png'));
+  assert.ok(!mini.includes('newton-stamp.png'));
+});

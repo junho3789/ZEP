@@ -22,7 +22,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.5.1-collapse-fix';
+  var VERSION = '1.5.2-image-fix';
   var sessions = [];
 
   // 설정과 공통 함수
