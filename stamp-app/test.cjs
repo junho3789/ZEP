@@ -110,10 +110,10 @@ test('collapse removes old HUD and ignores messages from stale widget', () => {
 test('failed widget destruction prevents additional overlapping HUDs', () => {
   const app = createApp();
   const old = app.widgets.at(-1);
-  old.destroy = () => false;
+  old.destroy = () => { throw Error('destroy exception'); };
   old.receive(app.player, { type: 'toggle' });
   assert.equal(app.widgets.length, 1);
-  assert.ok(app.messages.at(-1).includes('재접속'));
+  assert.ok(app.messages.at(-1).includes('다시 눌러'));
 });
 
 test('recovery command hides HUD without changing progress, then restores it', () => {
@@ -403,4 +403,39 @@ test('mini icon click reopens window and progress stays in accessible label only
   assert.equal(focused,1);
   listener({source:parent,data:{type:'state',count:4,required:4}});
   assert.equal(attributes.complete,true);
+});
+
+test('false destroy return still switches to mini icon and back without losing stamps', () => {
+  const app = createApp();
+  app.collectAll();
+  const stored = app.player.storage;
+  for (let i = 0; i < 8; i++) {
+    const old = app.widgets.at(-1);
+    old.destroy = function(){ this.dead = true; return false; };
+    old.receive(app.player,{type:'toggle'});
+    app.ready();
+    const current = app.widgets.at(-1);
+    assert.equal(old.dead,true);
+    assert.equal(current.args[0],i % 2 === 0 ? 'stamp-mini.html' : 'stamp-ui.html');
+    assert.equal(current.state.count,4);
+    assert.equal(app.widgets.filter(widget=>!widget.dead).length,1);
+    old.receive(app.player,{type:'toggle'});
+    assert.equal(app.widgets.at(-1),current);
+  }
+  assert.equal(app.player.storage,stored);
+  assert.ok(!app.messages.some(message=>message.includes('UI를 정리하지 못했습니다')));
+});
+test('destroy exception preserves expanded state and the next click can retry', () => {
+  const app = createApp();
+  const old = app.widgets.at(-1);
+  const destroy = old.destroy;
+  old.destroy=()=>{throw Error('temporary');};
+  old.receive(app.player,{type:'toggle'});
+  assert.equal(old.state.collapsed,false);
+  assert.equal(app.widgets.length,1);
+  old.destroy=destroy;
+  old.receive(app.player,{type:'toggle'});
+  app.ready();
+  assert.equal(app.widgets.at(-1).args[0],'stamp-mini.html');
+  assert.equal(app.widgets.at(-1).state.collapsed,true);
 });

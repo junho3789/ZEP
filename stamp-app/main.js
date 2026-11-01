@@ -22,7 +22,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.5-newturn';
+  var VERSION = '1.5.1-collapse-fix';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -123,9 +123,10 @@ var CONFIG = {
   function destroyWidget(session) {
     if (!session.widget) return true;
     var widget = session.widget;
-    // 제거에 실패하면 새 위젯을 겹쳐 만들지 않습니다.
+    // false/undefined 반환만으로 실패를 단정하지 않습니다.
+    // 이미 제거된 핸들도 있을 수 있으므로 실제 예외가 날 때만 중단합니다.
     try {
-      if (widget.destroy() === false) return false;
+      widget.destroy();
     } catch (error) {
       return false;
     }
@@ -136,8 +137,8 @@ var CONFIG = {
 
   function showHud(session) {
     if (!destroyWidget(session)) {
-      notify(session.player, 'UI를 정리하지 못했습니다. 맵에 재접속해 주세요.');
-      return;
+      notify(session.player, '창을 전환하지 못했습니다. 잠시 후 다시 눌러주세요.');
+      return false;
     }
     session.ready = false;
     var layout = CONFIG.ui;
@@ -154,10 +155,20 @@ var CONFIG = {
         session.ready = true;
         sendProgress(session);
       } else if (data.type === 'toggle') {
-        session.collapsed = !session.collapsed;
-        showHud(session);
+        var previousCollapsed = session.collapsed;
+        session.collapsed = !previousCollapsed;
+        try {
+          if (!showHud(session)) {
+            session.collapsed = previousCollapsed;
+            sendProgress(session);
+          }
+        } catch (error) {
+          session.collapsed = previousCollapsed;
+          notify(session.player, '창을 열지 못했습니다. !stamps로 다시 열어주세요.');
+        }
       }
     });
+    return true;
   }
 
   // 링크 열기 호출 성공을 지급 기준으로 사용합니다. 실제 로딩은 검증하지 않습니다.
