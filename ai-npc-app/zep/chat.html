@@ -1,0 +1,15 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 캐릭터와 대화</title><style>
+*{box-sizing:border-box}body{margin:0;font:15px system-ui;background:#f7f7fc;color:#242437}main{height:100dvh;display:flex;flex-direction:column;max-width:520px;margin:auto;padding:16px;gap:12px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:18px;margin:0}#log{flex:1;overflow:auto;min-height:0}p{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:14px;background:white}p.user{background:#e5e0ff}form{display:flex;gap:8px}input{flex:1;min-width:0;padding:12px;border:1px solid #ccc;border-radius:10px}button{padding:10px;border:0;border-radius:10px;background:#6552cf;color:white}button:disabled{opacity:.5}#status{min-height:20px;font-size:13px;color:#686878}
+</style><main><header><h1>AI 캐릭터와 대화</h1><button id="close" aria-label="대화 닫기">닫기</button></header><div id="log" role="log" aria-live="polite"></div><div id="status" role="status"></div><form><input id="message" aria-label="메시지" placeholder="메시지를 입력하세요" maxlength="1500" autocomplete="off"><button id="send">전송</button></form></main>
+<script>
+// ZEP widget bridge. No API key belongs here.
+const log=document.querySelector('#log'),status=document.querySelector('#status'),input=document.querySelector('input'),send=document.querySelector('#send');
+let pending=null,characterName='캐릭터',initialized=false;
+function append(role,text){const p=document.createElement('p');p.className=role;p.textContent=text;log.append(p);log.scrollTop=log.scrollHeight;}
+function unlock(){clearTimeout(pending?.timer);pending=null;send.disabled=false;input.disabled=false;}
+document.querySelector('form').onsubmit=e=>{e.preventDefault();const text=input.value.trim();if(!text||pending)return;const requestId=Date.now().toString(36)+Math.random().toString(36).slice(2);append('user',text);input.value='';send.disabled=true;input.disabled=true;status.textContent=characterName+'의 답변을 기다리고 있어요…';pending={requestId,timer:setTimeout(()=>{unlock();status.textContent='응답이 지연되고 있어요. 다시 시도해 주세요.';},30000)};window.parent.postMessage({type:'npc.chat',requestId,message:text},'*');};
+window.addEventListener('message',e=>{if(e.source!==window.parent)return;const d=e.data;if(!d)return;if(d.type==='npc.init'&&!initialized){initialized=true;characterName=typeof d.name==='string'?d.name:'캐릭터';document.querySelector('h1').textContent=characterName+'와 대화';append('notice','가까이에서 자유롭게 말을 걸어보세요.');return;}if(d.type!=='npc.reply'||!pending||d.requestId!==pending.requestId)return;unlock();status.textContent=d.error||'';if(typeof d.answer==='string')append('assistant',d.answer);input.focus();});
+document.querySelector('#close').onclick=()=>window.parent.postMessage({type:'npc.close'},'*');
+window.parent.postMessage({type:'npc.ready'},'*');
+</script></html>
