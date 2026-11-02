@@ -4,6 +4,8 @@
     var npcs = [], chats = {}, editors = {}, conversations = {}, clock = 0;
     var personas = {}, storeRevision = 0, storageReady = false, storageError = "", saving = false;
     var STORE_KEY = "aiNpcOfflineV2";
+    var VERSION = "2.0.1", sprite = null, resourceError = "", failures = {}, started = false;
+    function problem(id, error) { failures[id] = String(error && error.message ? error.message : error).slice(0, 240); }
     function admin(p) { return p && (p.role === 3000 || p.role === 3001); }
     function player(id) {
         for (var i = 0; i < App.players.length; i++) if (String(App.players[i].id) === String(id)) return App.players[i];
@@ -11,6 +13,7 @@
     }
     function position(n) {
         var o = Map.getObjectWithKey(n.key);
+        if (!o || typeof o.tileX !== "number" || typeof o.tileY !== "number") throw new Error("NPC 오브젝트 조회 실패: " + n.id);
         return { x: o.tileX, y: o.tileY };
     }
     function distance(n, p) {
@@ -195,18 +198,55 @@
         }
         return true;
     }
-    function create(def, sprite) {
+    function dimensions() {
+        if (!(Map.width > 0 && Map.height > 0)) throw new Error("맵 크기를 아직 읽을 수 없어요");
+        return { width: Math.floor(Map.width), height: Math.floor(Map.height) };
+    }
+    function clipped(def, anchor) {
+        var size = dimensions(), copy = {}, keys = Object.keys(def);
+        keys.forEach(function (k) { copy[k] = def[k]; });
+        function clamp(v, max) { return Math.max(0, Math.min(max - 1, Math.round(v))); }
+        copy.x = clamp(anchor ? anchor.tileX : def.x, size.width);
+        copy.y = clamp(anchor ? anchor.tileY : def.y, size.height);
+        copy.minX = anchor ? Math.max(0, copy.x - 6) : clamp(def.minX, size.width);
+        copy.maxX = anchor ? Math.min(size.width - 1, copy.x + 6) : clamp(def.maxX, size.width);
+        copy.minY = anchor ? Math.max(0, copy.y - 6) : clamp(def.minY, size.height);
+        copy.maxY = anchor ? Math.min(size.height - 1, copy.y + 6) : clamp(def.maxY, size.height);
+        if (copy.minX > copy.maxX || copy.minY > copy.maxY) throw new Error("배회 영역의 최소·최대 좌표가 뒤바뀌었어요");
+        copy.x = Math.max(copy.minX, Math.min(copy.maxX, copy.x));
+        copy.y = Math.max(copy.minY, Math.min(copy.maxY, copy.y));
+        return copy;
+    }
+    function freeTile(def, ignored) {
+        // Nearby search, limited to the actual patrol region. Never replace map objects.
+        var maxRadius = Math.max(def.maxX - def.minX, def.maxY - def.minY), checked = 0;
+        for (var radius = 0; radius <= maxRadius; radius++) {
+            for (var y = Math.max(def.minY, def.y - radius); y <= Math.min(def.maxY, def.y + radius); y++) {
+                for (var x = Math.max(def.minX, def.x - radius); x <= Math.min(def.maxX, def.x + radius); x++) {
+                    if (Math.max(Math.abs(x - def.x), Math.abs(y - def.y)) !== radius) continue;
+                    if (++checked > 4096) throw new Error("빈 타일 검색 한도를 넘었어요. !npc-here를 사용해 주세요");
+                    if (canWalk(ignored || null, x, y)) return { x: x, y: y };
+                }
+            }
+        }
+        throw new Error("배회 영역에 빈 타일이 없어요. 빈 공간에서 !npc-here를 사용해 주세요");
+    }
+    function create(def) {
         if (!/^[a-z0-9_-]{1,64}$/.test(def.id)) throw new Error("Invalid NPC ID");
         if (npcs.some(function (n) { return n.id === def.id; })) throw new Error("Duplicate NPC ID");
         if ([def.x, def.y, def.minX, def.maxX, def.minY, def.maxY].some(function (v) {
             return typeof v !== "number" || !isFinite(v) || Math.floor(v) !== v;
-        }) || def.minX < 0 || def.minY < 0 || def.maxX >= Map.width || def.maxY >= Map.height ||
-            def.x < def.minX || def.x > def.maxX || def.y < def.minY || def.y > def.maxY) throw new Error("Invalid NPC patrol bounds");
-        if (!canWalk(null, def.x, def.y)) throw new Error("NPC spawn blocked: " + def.id);
-        var n = { id: def.id, key: "ai-npc:" + def.id, name: def.name };
-        n.object = Map.putObjectWithKey(def.x, def.y, sprite, { key: n.key, type: 21,
+        })) throw new Error("NPC 좌표는 정수여야 해요");
+        def = clipped(def);
+        var spawn = freeTile(def);
+        def.x = spawn.x; def.y = spawn.y;
+        var n = { id: def.id, key: "ai-npc:" + def.id, name: personas[def.id] ? personas[def.id].name : def.name };
+        Map.putObjectWithKey(def.x, def.y, sprite, { key: n.key, type: 21,
             useDirAnim: true, impassable: false, movespeed: 58, activeDistance: NPC_CONFIG.stopRadius,
             triggerByTouch: false, npcProperty: { name: n.name } });
+        n.object = Map.getObjectWithKey(n.key);
+        if (!n.object) throw new Error("생성한 오브젝트를 조회하지 못했어요");
+        if (typeof Map.playObjectAnimationWithKey === "function") Map.playObjectAnimationWithKey(n.key, "down_idle", -1);
         var adapter = {
             position: function () { return position(n); },
             players: function () { return App.players.map(function (p) { return { id: p.id, x: p.tileX, y: p.tileY }; }); },
@@ -219,37 +259,92 @@
         n.controller = new NpcController(adapter, { stopRadius: NPC_CONFIG.stopRadius,
             resumeRadius: NPC_CONFIG.resumeRadius, minX: def.minX, maxX: def.maxX, minY: def.minY, maxY: def.maxY });
         npcs.push(n);
+        delete failures[n.id];
     }
     function interact(p, key) {
         var best = null, d = Infinity;
         npcs.forEach(function (n) { var nd = distance(n, p); if ((!key || key === n.key) && nd < d) { best = n; d = nd; } });
         if (best && d <= NPC_CONFIG.stopRadius) best.controller.interact({ id: p.id, x: p.tileX, y: p.tileY });
     }
-    App.onInit.Add(function () {
-        var sprite = App.loadSpritesheet(NPC_CONFIG.sprite.file, NPC_CONFIG.sprite.frameWidth,
-            NPC_CONFIG.sprite.frameHeight, NPC_CONFIG.sprite.animations, NPC_CONFIG.sprite.frameRate);
-        NPC_CONFIG.characters.forEach(function (def) { create(def, sprite); });
-        load();
+    function loadSprite() {
+        try {
+            sprite = App.loadSpritesheet(NPC_CONFIG.sprite.file, NPC_CONFIG.sprite.frameWidth,
+                NPC_CONFIG.sprite.frameHeight, NPC_CONFIG.sprite.animations, NPC_CONFIG.sprite.frameRate);
+            if (!sprite) throw new Error("스프라이트 리소스가 비어 있어요. ZIP 안의 npc.png를 확인해 주세요");
+            resourceError = "";
+        } catch (e) { sprite = null; resourceError = String(e.message || e); }
+    }
+    function spawnMissing(anchor) {
+        started = true;
+        if (!sprite) loadSprite();
+        if (!sprite) return;
+        NPC_CONFIG.characters.forEach(function (def) {
+            if (npcs.some(function (n) { return n.id === def.id; })) return;
+            try { create(anchor ? clipped(def, anchor) : def); }
+            catch (e) { problem(def.id, e); }
+        });
+    }
+    function status(p) {
+        p.sendMessage("[NPC " + VERSION + "] 실행 중 · 맵 " + Map.width + "×" + Map.height +
+            " · 생성 " + npcs.length + "/" + NPC_CONFIG.characters.length + " · 설정 " + (storageReady ? "준비됨" : storageError || "로딩 중"));
+        if (resourceError) p.sendMessage("[NPC 이미지] " + resourceError);
+        else p.sendMessage("[NPC 이미지] " + NPC_CONFIG.sprite.file + " · 프레임 " + NPC_CONFIG.sprite.frameWidth + "×" + NPC_CONFIG.sprite.frameHeight);
+        npcs.forEach(function (n) {
+            try { var q = position(n); p.sendMessage("[NPC] " + n.name + " (" + q.x + ", " + q.y + ") · " + n.controller.state); }
+            catch (e) { p.sendMessage("[NPC] " + n.id + " 조회 실패"); }
+        });
+        Object.keys(failures).forEach(function (id) { p.sendMessage("[NPC 오류] " + id + ": " + failures[id]); });
+        if (admin(p)) {
+            try { p.sendMessage("[NPC 현재 타일] (" + p.tileX + ", " + p.tileY + ") · 벽=" + Map.getTile(1, p.tileX, p.tileY) +
+                " 효과=" + Map.getTile(2, p.tileX, p.tileY) + " 오브젝트=" + Map.getTile(3, p.tileX, p.tileY) + " 상단=" + Map.getTile(5, p.tileX, p.tileY)); }
+            catch (e) { p.sendMessage("[NPC 현재 타일] 조회 실패"); }
+        }
+    }
+    App.onInit.Add(function () { loadSprite(); try { load(); } catch (e) { storageError = String(e.message || e); } });
+    // Object placement belongs to map-ready lifecycle, after resource initialization.
+    App.onStart.Add(function () { spawnMissing(); });
+    App.onJoinPlayer.Add(function (p) {
+        App.runLater(function () {
+            spawnMissing();
+            if (admin(p)) p.sendMessage("[NPC " + VERSION + "] !npc-status로 생성 상태 확인 · !npc-here로 근처에 배치");
+        }, 0.2);
     });
     App.onUpdate.Add(function (dt) {
         if (typeof dt !== "number" || !isFinite(dt) || dt < 0) return;
         clock += dt;
-        npcs.forEach(function (n) { n.controller.tick(dt); });
+        if (!started && App.players.length) spawnMissing();
+        npcs.forEach(function (n) { try { n.controller.tick(dt); } catch (e) { problem(n.id, e); } });
         Object.keys(conversations).forEach(function (key) {
             if (clock - conversations[key].touched > 1800) delete conversations[key];
         });
     });
     // Direct F detection avoids relying on editor-only onTriggerObject behavior.
     App.addOnKeyDown(70, function (p) { interact(p); });
-    App.onTriggerObject.Add(function (p, layer, x, y, key) { if (typeof key === "string") interact(p, key); });
-    App.onAppObjectAttacked.Add(function (p, x, y, layer, key) { interact(p, key); });
-    App.putMobilePunch(true); // On mobile, face the NPC and use the interaction/punch button.
+    if (App.onTriggerObject) App.onTriggerObject.Add(function (p, layer, x, y, key) { if (typeof key === "string") interact(p, key); });
+    if (App.onAppObjectAttacked) App.onAppObjectAttacked.Add(function (p, x, y, layer, key) { interact(p, key); });
+    if (typeof App.putMobilePunch === "function") App.putMobilePunch(true);
     App.onLeavePlayer.Add(function (p) {
         var id = String(p.id); close(id);
         if (editors[id]) { editors[id].destroy(); delete editors[id]; }
         Object.keys(conversations).forEach(function (key) { if (key.indexOf(id + ":") === 0) delete conversations[key]; });
     });
     App.onSay.Add(function (p, text) {
+        if (text === "!npc-status") { status(p); return; }
+        if (text === "!npc-here" && admin(p)) {
+            spawnMissing(p);
+            npcs.forEach(function (n) {
+                try {
+                    var original = NPC_CONFIG.characters.filter(function (d) { return d.id === n.id; })[0];
+                    var area = clipped(original, p), target = freeTile(area, n);
+                    Object.keys(chats).forEach(function (id) { if (chats[id].npc === n) close(id); });
+                    if (Map.moveObjectWithKey(n.key, target.x, target.y, false, 0.01) === false) throw new Error("근처 배치 요청이 거부됐어요");
+                    n.controller.c.minX = area.minX; n.controller.c.maxX = area.maxX;
+                    n.controller.c.minY = area.minY; n.controller.c.maxY = area.maxY;
+                    delete failures[n.id];
+                } catch (e) { problem(n.id, e); }
+            });
+            status(p); return;
+        }
         if (text === "!npc") { interact(p); return; }
         if (text === "!npc-admin") openEditor(p);
     });

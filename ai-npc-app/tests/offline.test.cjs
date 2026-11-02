@@ -7,18 +7,18 @@ const D=require('../zep/dialogue.js');
 const ROOT=path.join(__dirname,'../zep');
 const empty=()=>({name:'테스트',personality:'친구',background:'안내 정보',style:'friendly',revision:1,greetings:['안녕 {player}!'],fallbacks:['모르겠어 A','모르겠어 B'],rules:[]});
 
-function runtime(initial=''){
+function runtime(initial='',options={}){
  const events={},objects={},timers=[],widgets=[];let storage=initial,writes=0;
  const p={id:'u1',name:'유저',role:0,tileX:9,tileY:8,isMobile:false,notifications:[],sendMessage(s){this.notifications.push(s);},showWidgetResponsive(file){
   const w={file,messages:[],destroyed:false,onMessage:{Add(fn){w.receive=fn;}},sendMessage(d){this.messages.push(JSON.parse(JSON.stringify(d)));},destroy(){this.destroyed=true;}};widgets.push(w);return w;
  }};
- const app={players:[p],loadSpritesheet(){return{};},getStorage(fn){fn(storage);},setStorage(raw){storage=raw;writes++;},putMobilePunch(){},
+ const app={players:[p],loadSpritesheet(){return options.badSprite?null:{};},getStorage(fn){fn(storage);},setStorage(raw){storage=raw;writes++;},putMobilePunch(){},
  addOnKeyDown(code,fn){events.key=fn;},runLater(fn,seconds){timers.push({fn,seconds});}};
- for(const name of ['onInit','onUpdate','onTriggerObject','onAppObjectAttacked','onLeavePlayer','onSay'])app[name]={Add(fn){events[name]=fn;}};
- const map={width:30,height:30,getTile(){return -1;},putObjectWithKey(x,y,sprite,opts){const o={...opts,tileX:x,tileY:y,sendUpdated(){}};objects[opts.key]=o;return o;},getObjectWithKey:k=>objects[k],moveObjectWithKey(k,x,y){objects[k].tileX=x;objects[k].tileY=y;return true;}};
+ for(const name of ['onInit','onStart','onJoinPlayer','onUpdate','onTriggerObject','onAppObjectAttacked','onLeavePlayer','onSay'])app[name]={Add(fn){events[name]=fn;}};
+ const map={width:options.width===undefined?30:options.width,height:options.height===undefined?30:options.height,getTile(layer,x,y){return options.tile?options.tile(layer,x,y):-1;},putObjectWithKey(x,y,sprite,opts){if(options.failId&&opts.key==='ai-npc:'+options.failId)throw Error('mock placement failure');const o={...opts,tileX:x,tileY:y,sendUpdated(){}};objects[opts.key]=o;return o;},getObjectWithKey:k=>objects[k],moveObjectWithKey(k,x,y){objects[k].tileX=x;objects[k].tileY=y;return true;}};
  const context=vm.createContext({App:app,Map:map,console});
  vm.runInContext(['config.js','controller.js','dialogue.js','app.js'].map(n=>fs.readFileSync(path.join(ROOT,n),'utf8')).join('\n'),context);
- events.onInit();
+ events.onInit();if(options.beforeStart)options.beforeStart({objects,map});if(!options.noStart)events.onStart();
  return {events,objects,timers,widgets,p,app,map,get storage(){return storage;},get writes(){return writes;},drain(){for(const t of timers.splice(0))t.fn();},chat(text,id='one'){const w=widgets.at(-1);w.receive(p,{type:'npc.chat',requestId:id,message:text});this.drain();events.onUpdate(.7);return w.messages.at(-1);}};
 }
 test('every style preset is valid and has a distinct voice',()=>{
@@ -78,4 +78,28 @@ test('controller keeps waiting in the distance gap, considers all users and avoi
  const Controller=require('../zep/controller.js');let players=[{id:'a',x:6,y:5}],moves=0;
  const c=new Controller({position:()=>({x:5,y:5}),players:()=>players,stop(){},closeChat(){},openChat(){},canWalk:()=>false,step(){moves++;}});
  c.tick(.1);assert.equal(c.state,'waiting');players=[{id:'a',x:8,y:5}];c.tick(.1);assert.equal(c.state,'waiting');players=[{id:'b',x:6,y:5},{id:'a',x:20,y:20}];c.tick(.1);assert.equal(c.state,'waiting');players=[];c.tick(1);assert.equal(c.state,'roaming');c.steps=2;c.direction=[1,0];c.timer=0;c.tick(1);assert.equal(moves,0);
+});
+test('objects are placed after map-ready onStart, not during onInit',()=>{
+ const r=runtime('',{width:0,height:0,beforeStart({objects,map}){assert.equal(Object.keys(objects).length,0);map.width=30;map.height=30;}});
+ assert.equal(Object.keys(r.objects).length,2);
+});
+test('small maps clamp patrol bounds instead of aborting startup',()=>{
+ const r=runtime('',{width:6,height:6});assert.equal(Object.keys(r.objects).length,2);
+ for(const n of Object.values(r.objects)){assert.ok(n.tileX<6&&n.tileY<6);assert.ok(n.tileX>=0&&n.tileY>=0);}
+ assert.notDeepEqual([r.objects['ai-npc:moa'].tileX,r.objects['ai-npc:moa'].tileY],[r.objects['ai-npc:sage'].tileX,r.objects['ai-npc:sage'].tileY]);
+});
+test('blocked starting tile relocates nearby; one failed NPC does not prevent other NPCs',()=>{
+ const relocated=runtime('',{tile(layer,x,y){return layer===1&&x===8&&y===8?3:-1;}});
+ assert.equal(Object.keys(relocated.objects).length,2);assert.notDeepEqual([relocated.objects['ai-npc:moa'].tileX,relocated.objects['ai-npc:moa'].tileY],[8,8]);
+ const partial=runtime('',{failId:'moa'});assert.equal(Object.keys(partial.objects).length,1);partial.events.onSay(partial.p,'!npc-status');assert.ok(partial.p.notifications.some(s=>s.includes('mock placement failure')));
+});
+test('fully blocked patrol areas can be recovered by an admin from a clear location',()=>{
+ const r=runtime('',{tile(layer,x,y){return layer===1&&x<20?3:-1;}});assert.equal(Object.keys(r.objects).length,0);
+ r.p.tileX=25;r.p.tileY=25;r.events.onSay(r.p,'!npc-here');assert.equal(Object.keys(r.objects).length,0);
+ r.p.role=3001;r.events.onSay(r.p,'!npc-here');assert.equal(Object.keys(r.objects).length,2);
+ for(const n of Object.values(r.objects))assert.ok(n.tileX>=20&&Math.abs(n.tileX-25)<=6&&Math.abs(n.tileY-25)<=6);
+});
+test('missing sprite is reported while editor and diagnostics remain usable',()=>{
+ const r=runtime('',{badSprite:true});assert.equal(Object.keys(r.objects).length,0);r.p.role=3001;r.events.onSay(r.p,'!npc-status');assert.ok(r.p.notifications.some(s=>s.includes('스프라이트')));
+ r.events.onSay(r.p,'!npc-admin');assert.equal(r.widgets.at(-1).file,'editor.html');
 });
