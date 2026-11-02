@@ -4,15 +4,45 @@
     var npcs = [], chats = {}, editors = {}, conversations = {}, clock = 0;
     var personas = {}, storeRevision = 0, storageReady = false, storageError = "", saving = false;
     var STORE_KEY = "aiNpcOfflineV2";
-    var VERSION = "2.0.2", sprite = null, resourceError = "", failures = {}, started = false;
+    var VERSION = "2.0.3", sprite = null, resourceError = "", failures = {}, started = false;
     function problem(id, error) { failures[id] = String(error && error.message ? error.message : error).slice(0, 240); }
+    function hostCall(label, fn) {
+        try { return fn(); }
+        catch (e) { throw new Error(label + " | " + String(e && e.message ? e.message : e)); }
+    }
+    function tile(layer, x, y) {
+        x = Number(x); y = Number(y);
+        if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= Number(Map.width) || y >= Number(Map.height)) {
+            throw new Error("타일 좌표 오류: layer=" + layer + ",x=" + x + ",y=" + y);
+        }
+        return hostCall("타일 조회 layer=" + layer + ",x=" + x + ",y=" + y, function () { return Map.getTile(layer, x, y); });
+    }
+    function move(n, x, y, path, seconds) {
+        x = Number(x); y = Number(y);
+        if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= Number(Map.width) || y >= Number(Map.height)) {
+            throw new Error("이동 좌표 오류: " + n.id + ",x=" + x + ",y=" + y);
+        }
+        return hostCall("이동 요청 " + n.id + " x=" + x + ",y=" + y + ",path=" + path, function () {
+            return Map.moveObjectWithKey(n.key, x, y, path, seconds);
+        });
+    }
+    function walk(n, x, y, seconds) {
+        var current = position(n);
+        if (Math.abs(current.x - x) + Math.abs(current.y - y) !== 1) throw new Error("배회는 인접 한 타일만 이동할 수 있어요");
+        if (blocked(n, x, y, true)) return false;
+        // ZEP GetWeight throws on this map for usePath=true. Only execute a
+        // prevalidated cardinal step, never a multi-tile path or obstacle bypass.
+        var accepted = move(n, x, y, false, seconds);
+        if (accepted !== false) delete failures[n.id];
+        return accepted;
+    }
     function admin(p) { return p && (p.role === 3000 || p.role === 3001); }
     function player(id) {
         for (var i = 0; i < App.players.length; i++) if (String(App.players[i].id) === String(id)) return App.players[i];
         return null;
     }
     function position(n) {
-        var o = Map.getObjectWithKey(n.key);
+        var o = hostCall("위치 조회 " + n.id, function () { return Map.getObjectWithKey(n.key); });
         if (!o || typeof o.tileX !== "number" || typeof o.tileY !== "number") throw new Error("NPC 오브젝트 조회 실패: " + n.id);
         return { x: o.tileX, y: o.tileY };
     }
@@ -186,11 +216,11 @@
     function blocked(n, x, y, nativePath) {
         if (x < 0 || y < 0 || x >= Map.width || y >= Map.height) return "맵 경계";
         // Conservative policy: avoid all map objects, walls and impassable effect tiles.
-        if (Number(Map.getTile(2, x, y)) === 1) return "통행 불가";
+        if (Number(tile(2, x, y)) === 1) return "통행 불가";
         if (!nativePath) {
-            if (Number(Map.getTile(1, x, y)) >= 0) return "벽 그림";
-            if (Number(Map.getTile(3, x, y)) >= 0) return "오브젝트 그림";
-            if (Number(Map.getTile(5, x, y)) >= 0) return "상단 그림";
+            if (Number(tile(1, x, y)) >= 0) return "벽 그림";
+            if (Number(tile(3, x, y)) >= 0) return "오브젝트 그림";
+            if (Number(tile(5, x, y)) >= 0) return "상단 그림";
         }
         for (var i = 0; i < npcs.length; i++) {
             if (npcs[i] === n) continue;
@@ -255,11 +285,10 @@
         var adapter = {
             position: function () { return position(n); },
             players: function () { return App.players.map(function (p) { return { id: p.id, x: p.tileX, y: p.tileY }; }); },
-            // Graphics alone do not establish collision. ZEP pathfinding is
-            // authoritative; explicit impassable tiles and actors are filtered here.
+            // Each cardinal destination is checked locally before a direct step.
             canWalk: function (x, y) { return !blocked(n, x, y, true); },
-            step: function (x, y, seconds) { Map.moveObjectWithKey(n.key, x, y, true, seconds); },
-            stop: function () { var q = position(n); Map.moveObjectWithKey(n.key, q.x, q.y, false, 0.01); },
+            step: function (x, y, seconds) { return walk(n, x, y, seconds); },
+            stop: function () { var q = position(n); move(n, q.x, q.y, false, 0.01); },
             openChat: function (p) { var actual = player(p.id); if (actual) open(n, actual); },
             closeChat: close
         };
@@ -276,7 +305,7 @@
         if (!sprite) throw new Error(resourceError || "이미지를 로드하지 못했어요");
         var x = Number(p.tileX), y = Number(p.tileY), size = dimensions();
         if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= size.width || y >= size.height) throw new Error("현재 유저 좌표가 올바르지 않아요");
-        if (Number(Map.getTile(2, x, y)) === 1) throw new Error("현재 타일은 통행 불가로 표시돼 있어요. 한 걸음 이동해 주세요");
+        if (Number(tile(2, x, y)) === 1) throw new Error("현재 타일은 통행 불가로 표시돼 있어요. 한 걸음 이동해 주세요");
         var n = npcs.filter(function (item) { return item.id === id; })[0];
         npcs.forEach(function (other) {
             if (other === n) return;
@@ -289,7 +318,7 @@
         if (!n) n = create(area, { x: x, y: y });
         else {
             Object.keys(chats).forEach(function (uid) { if (chats[uid].npc === n) close(uid); });
-            if (Map.moveObjectWithKey(n.key, x, y, false, 0.01) === false) throw new Error("직접 배치 요청이 거부됐어요");
+            if (move(n, x, y, false, 0.01) === false) throw new Error("직접 배치 요청이 거부됐어요");
         }
         n.controller.c.minX = area.minX; n.controller.c.maxX = area.maxX;
         n.controller.c.minY = area.minY; n.controller.c.maxY = area.maxY;
@@ -356,7 +385,7 @@
         if (typeof dt !== "number" || !isFinite(dt) || dt < 0) return;
         clock += dt;
         if (!started && App.players.length) spawnMissing();
-        npcs.forEach(function (n) { try { n.controller.tick(dt); } catch (e) { problem(n.id, e); } });
+        npcs.forEach(function (n) { try { n.controller.tick(dt); } catch (e) { problem(n.id, e); n.controller.state = "error"; n.controller.steps = 0; } });
         Object.keys(conversations).forEach(function (key) {
             if (clock - conversations[key].touched > 1800) delete conversations[key];
         });
@@ -385,7 +414,7 @@
                     var original = NPC_CONFIG.characters.filter(function (d) { return d.id === n.id; })[0];
                     var area = clipped(original, p), target = freeTile(area, n);
                     Object.keys(chats).forEach(function (id) { if (chats[id].npc === n) close(id); });
-                    if (Map.moveObjectWithKey(n.key, target.x, target.y, false, 0.01) === false) throw new Error("근처 배치 요청이 거부됐어요");
+                    if (move(n, target.x, target.y, false, 0.01) === false) throw new Error("근처 배치 요청이 거부됐어요");
                     n.controller.c.minX = area.minX; n.controller.c.maxX = area.maxX;
                     n.controller.c.minY = area.minY; n.controller.c.maxY = area.maxY;
                     delete failures[n.id];

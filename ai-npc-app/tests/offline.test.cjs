@@ -123,11 +123,27 @@ test('nearby diagnostics distinguish occupied standing tile from neighboring gra
  const r=runtime('',{tile(layer,x,y){return layer===1&&x===8&&y===8?4:-1;}});r.p.role=3001;r.events.onSay(r.p,'!npc-status');const around=r.p.notifications.find(s=>s.startsWith('[NPC 주변 판정]'));
  assert.match(around,/벽 그림/);assert.match(around,/유저 위치/);
 });
-test('roaming attempts native paths over graphics while respecting host-rejected movement',()=>{
+test('roaming uses validated direct steps and respects host-rejected movement',()=>{
  const r=runtime('',{tile(layer){return layer===1?5:-1;}});r.p.role=3001;r.events.onSay(r.p,'!npc-place moa');
  const n=r.objects['ai-npc:moa'],origin=[n.tileX,n.tileY],attempts=[];r.p.tileX=25;r.p.tileY=25;
  r.map.moveObjectWithKey=(key,x,y,usePath)=>{attempts.push({key,x,y,usePath});return false;};
  for(let i=0;i<20;i++)r.events.onUpdate(.6);
- assert.ok(attempts.length>0);assert.ok(attempts.every(x=>x.usePath===true));assert.deepEqual([n.tileX,n.tileY],origin);
+ assert.ok(attempts.length>0);assert.ok(attempts.every(x=>x.usePath===false));assert.deepEqual([n.tileX,n.tileY],origin);
  r.map.getTile=layer=>layer===2?'1':-1;const count=attempts.length;for(let i=0;i<10;i++)r.events.onUpdate(.6);assert.equal(attempts.length,count);
+});
+test('a host with broken GetWeight can still roam without invoking pathfinding',()=>{
+ const r=runtime('',{tile(layer){return layer===1?5:-1;}});r.p.role=3001;r.events.onSay(r.p,'!npc-place moa');r.p.tileX=25;r.p.tileY=25;
+ const attempts=[];r.map.moveObjectWithKey=(key,x,y,usePath)=>{if(usePath)throw Error('System.IndexOutOfRangeException at ScriptMapService.GetWeight');const n=r.objects[key];assert.equal(Math.abs(n.tileX-x)+Math.abs(n.tileY-y),1);attempts.push({x,y});n.tileX=x;n.tileY=y;return true;};
+ for(let i=0;i<20;i++)r.events.onUpdate(.6);assert.ok(attempts.length>0);r.events.onSay(r.p,'!npc-status');assert.ok(!r.p.notifications.some(s=>s.startsWith('[NPC 오류] moa:')));
+});
+test('a failing tile lookup pauses only that NPC with the query coordinates and no retry storm',()=>{
+ const r=runtime('',{tile(layer){return layer===1?5:-1;}});r.p.role=3001;r.events.onSay(r.p,'!npc-place moa');r.p.tileX=25;r.p.tileY=25;let calls=0;
+ r.map.getTile=(layer,x,y)=>{calls++;throw Error('host tile failure');};
+ for(let i=0;i<20;i++)r.events.onUpdate(.6);assert.equal(calls,1);
+ r.events.onSay(r.p,'!npc-status');assert.ok(r.p.notifications.some(s=>s.includes('타일 조회 layer=2,x=')&&s.includes('host tile failure')));assert.ok(r.p.notifications.some(s=>s.includes('· error')));
+});
+test('a failing movement request is labelled and not repeated every update',()=>{
+ const r=runtime('',{tile(layer){return layer===1?5:-1;}});r.p.role=3001;r.events.onSay(r.p,'!npc-place moa');r.p.tileX=25;r.p.tileY=25;let calls=0;
+ r.map.moveObjectWithKey=()=>{calls++;throw Error('host move failure');};for(let i=0;i<20;i++)r.events.onUpdate(.6);assert.equal(calls,1);
+ r.events.onSay(r.p,'!npc-status');assert.ok(r.p.notifications.some(s=>s.includes('이동 요청 moa')&&s.includes('path=false')&&s.includes('host move failure')));
 });

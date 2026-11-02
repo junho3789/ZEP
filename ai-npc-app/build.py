@@ -42,7 +42,7 @@ def main():
     dist = ROOT / 'dist'
     dist.mkdir(exist_ok=True)
     # This is a preview, explicitly not the inaccessible chat attachment.
-    (dist / 'zep-npc-offline-v2.0.2-sample.zip').write_bytes(archive({
+    (dist / 'zep-npc-offline-v2.0.3-sample.zip').write_bytes(archive({
         'main.js': source.encode(), **widgets, 'npc.png': (ROOT / 'zep/npc.png').read_bytes()
     }))
     encode = lambda data: base64.b64encode(data).decode()
@@ -57,7 +57,7 @@ def main():
     # Browser-ready HTML must be opened after download, not GitHub's raw text view.
     builder_archive = archive({'zep-npc-offline-builder.html': builder.encode()})
     (dist / 'zep-npc-offline-builder.zip').write_bytes(builder_archive)
-    (dist / 'zep-npc-offline-builder-v2.0.2.zip').write_bytes(builder_archive)
+    (dist / 'zep-npc-offline-builder-v2.0.3.zip').write_bytes(builder_archive)
     print('Built: offline builder ZIP/HTML and clearly labelled sample ZIP')
 
 

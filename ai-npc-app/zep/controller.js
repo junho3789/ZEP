@@ -10,6 +10,7 @@ function NpcController(adapter, config) {
 }
 NpcController.prototype.distance=function(p,q) { return Math.max(Math.abs(p.x-q.x),Math.abs(p.y-q.y)); };
 NpcController.prototype.tick=function(dt) {
+  if(this.state==='error') return;
   var a=this.a,c=this.c,npc=a.position(),players=a.players(),nearest=Infinity;
   for(var i=0;i<players.length;i++) nearest=Math.min(nearest,this.distance(npc,players[i]));
   for(var id in this.sessions) {
@@ -30,7 +31,8 @@ NpcController.prototype.tick=function(dt) {
   }
   var x=npc.x+this.direction[0],y=npc.y+this.direction[1];
   if(x<c.minX || x>c.maxX || y<c.minY || y>c.maxY || !a.canWalk(x,y)) {this.steps=0;this.timer=0.3;return;}
-  a.step(x,y,c.stepSeconds); this.steps--; this.timer=c.stepSeconds;
+  if(a.step(x,y,c.stepSeconds)===false) {this.steps=0;this.timer=0.3;return;}
+  this.steps--; this.timer=c.stepSeconds;
 };
 NpcController.prototype.interact=function(player) {
   if(this.distance(this.a.position(),player)>this.c.stopRadius) return false;
