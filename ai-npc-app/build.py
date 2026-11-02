@@ -27,7 +27,7 @@ def archive(files):
 
 
 def main():
-    subprocess.run(['node', '--test', str(ROOT / 'tests/offline.test.cjs'), str(ROOT / 'tests/zip.test.cjs')], check=True)
+    subprocess.run(['node', '--test', str(ROOT / 'tests/offline.test.cjs'), str(ROOT / 'tests/zip.test.cjs'), str(ROOT / 'tests/sprite.test.cjs')], check=True)
     config = (ROOT / 'zep/config.js').read_text()
     runtime = '\n'.join((ROOT / 'zep' / name).read_text() for name in ['controller.js', 'dialogue.js', 'app.js'])
     source = config + '\n' + runtime
@@ -42,7 +42,7 @@ def main():
     dist = ROOT / 'dist'
     dist.mkdir(exist_ok=True)
     # This is a preview, explicitly not the inaccessible chat attachment.
-    (dist / 'zep-npc-offline-v2.0.3-sample.zip').write_bytes(archive({
+    (dist / 'zep-npc-offline-v2.1.0-sample.zip').write_bytes(archive({
         'main.js': source.encode(), **widgets, 'npc.png': (ROOT / 'zep/npc.png').read_bytes()
     }))
     encode = lambda data: base64.b64encode(data).decode()
@@ -51,13 +51,14 @@ def main():
     builder = (ROOT / 'tools/builder.template.html').read_text()
     builder = builder.replace('/* PACKAGE_DATA */', 'const ZEP_PACKAGE = ' + json.dumps(payload) + ';')
     builder = builder.replace('/* ZIP_WRITER */', (ROOT / 'tools/zip.js').read_text())
+    builder = builder.replace('/* SPRITE_MODEL */', (ROOT / 'tools/sprite-model.js').read_text())
     for script in re.findall(r'<script>(.*?)</script>', builder, re.S):
         subprocess.run(['node', '--check', '-'], input=script, text=True, check=True)
     (dist / 'zep-npc-offline-builder.html').write_text(builder)
     # Browser-ready HTML must be opened after download, not GitHub's raw text view.
     builder_archive = archive({'zep-npc-offline-builder.html': builder.encode()})
     (dist / 'zep-npc-offline-builder.zip').write_bytes(builder_archive)
-    (dist / 'zep-npc-offline-builder-v2.0.3.zip').write_bytes(builder_archive)
+    (dist / 'zep-npc-offline-builder-v2.1.0.zip').write_bytes(builder_archive)
     print('Built: offline builder ZIP/HTML and clearly labelled sample ZIP')
 
 

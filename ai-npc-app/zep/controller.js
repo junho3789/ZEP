@@ -20,9 +20,11 @@ NpcController.prototype.tick=function(dt) {
   if(this.state==='roaming' && nearest<=c.stopRadius) { this.state='waiting'; this.steps=0; a.stop(); }
   if(this.state==='waiting' && nearest>c.resumeRadius) { this.state='roaming'; this.timer=0.5; }
   if(this.state!=='roaming') return;
+  if(typeof a.busy==='function' && a.busy()) {this.timer=Math.max(0,this.timer-dt);return;}
   this.timer-=dt;
   if(this.timer>0) return;
   if(this.steps<=0) {
+    a.stop();
     var dirs=[[1,0],[-1,0],[0,1],[0,-1]];
     this.direction=dirs[Math.floor(Math.random()*dirs.length)];
     this.steps=2+Math.floor(Math.random()*4);
@@ -30,8 +32,8 @@ NpcController.prototype.tick=function(dt) {
     return;
   }
   var x=npc.x+this.direction[0],y=npc.y+this.direction[1];
-  if(x<c.minX || x>c.maxX || y<c.minY || y>c.maxY || !a.canWalk(x,y)) {this.steps=0;this.timer=0.3;return;}
-  if(a.step(x,y,c.stepSeconds)===false) {this.steps=0;this.timer=0.3;return;}
+  if(x<c.minX || x>c.maxX || y<c.minY || y>c.maxY || !a.canWalk(x,y)) {this.steps=0;this.timer=0.3;a.stop();return;}
+  if(a.step(x,y,c.stepSeconds)===false) {this.steps=0;this.timer=0.3;a.stop();return;}
   this.steps--; this.timer=c.stepSeconds;
 };
 NpcController.prototype.interact=function(player) {
