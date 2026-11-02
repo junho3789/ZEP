@@ -8,7 +8,7 @@ test('idle frames are independently registered, not copied from the first walkin
  selected.left_idle=[];assert.throws(()=>S.build(selected,S.defaults(),36,48,64,6),/왼쪽 정지/);
 });
 test('jump dance sit and a custom animation retain their frames labels and loop settings',()=>{
- const selected=selections(),motions=S.defaults();selected.jump=[10,11];selected.dance=[12,13,14];selected.sit=[15];selected.wave=[16,17];motions.push({id:'wave',label:'손 흔들기',loop:false});
+ const selected=selections(),motions=S.defaults();for(const [i,d]of ['down','left','right','up'].entries()){selected[d+'_jump']=[10+i];selected[d+'_sit']=[14+i];}selected.dance=[18];selected.wave=[19,20];motions.push({id:'wave',label:'손 흔들기',loop:false});
  const sprite=S.build(selected,motions,36,48,64,6);assert.equal(sprite.actions.length,4);assert.equal(sprite.actions.find(a=>a.id==='dance').loop,true);assert.equal(sprite.actions.find(a=>a.id==='jump').loop,false);
  const restored=S.read(sprite,36);assert.deepEqual(S.build(restored.selected,restored.motions,36,48,64,6),sprite);
 });
@@ -17,6 +17,16 @@ test('legacy explicit idle settings survive import and missing optional motions 
  assert.deepEqual(rebuilt.actions,[]);assert.deepEqual(rebuilt.animations.up_idle,[7]);
 });
 test('duplicate motion IDs and out of range frames are rejected',()=>{
- const selected=selections();selected.jump=[99];assert.throws(()=>S.build(selected,S.defaults(),36,48,64,6),/점프/);
- selected.jump=[10];assert.throws(()=>S.build(selected,S.defaults().concat([{id:'down',label:'중복',loop:false}]),36,48,64,6),/고유 ID/);assert.equal(S.validId('__proto__'),false);
+ const selected=selections();selected.down_jump=[99];assert.throws(()=>S.build(selected,S.defaults(),36,48,64,6),/점프/);
+ selected.down_jump=[10];assert.throws(()=>S.build(selected,S.defaults().concat([{id:'down',label:'중복',loop:false}]),36,48,64,6),/고유 ID/);assert.equal(S.validId('__proto__'),false);
+});
+test('directional groups require all four poses and prefer them over a legacy generic motion',()=>{
+ const s=selections(),motions=S.defaults().concat([{id:'jump',label:'이전 점프',loop:false}]);s.down_jump=[10];assert.throws(()=>S.build(s,motions,36,48,64,6),/4방향/);
+ for(const d of ['down','left','right','up'])s[d+'_jump']=[10];s.jump=[11];const built=S.build(s,motions,36,48,64,6);
+ assert.deepEqual(built.actions.filter(a=>a.id==='jump'),[{id:'jump',label:'점프',loop:false,directional:true}]);
+ const loaded=S.read(built,36);assert.equal(S.build(loaded.selected,loaded.motions,36,48,64,6).actions.filter(a=>a.id==='jump').length,1);
+});
+test('feet fine adjustment survives import',()=>{
+ const built=S.build(selections(),S.defaults(),36,48,64,6,{offsetX:3,offsetY:-4});const loaded=S.read(built,36);assert.deepEqual(loaded.display,{offsetX:3,offsetY:-4});
+ assert.deepEqual(S.build(loaded.selected,loaded.motions,36,48,64,6,loaded.display),built);
 });

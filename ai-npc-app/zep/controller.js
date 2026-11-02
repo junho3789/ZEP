@@ -3,10 +3,10 @@
  */
 function NpcController(adapter, config) {
   this.a=adapter;
-  this.c=Object.assign({stopRadius:2,resumeRadius:4,stepSeconds:0.55,minX:0,maxX:20,minY:0,maxY:20},config);
+  this.c=Object.assign({stopRadius:2,resumeRadius:4,stepSeconds:0.55,minX:0,maxX:20,minY:0,maxY:20,mode:'varied'},config);
   if (this.c.resumeRadius<=this.c.stopRadius) throw new Error('resumeRadius must exceed stopRadius');
   this.state='roaming'; this.timer=0; this.direction=null; this.steps=0;
-  this.sessions={};
+  this.sessions={}; this.patrolIndex=0;
 }
 NpcController.prototype.distance=function(p,q) { return Math.max(Math.abs(p.x-q.x),Math.abs(p.y-q.y)); };
 NpcController.prototype.tick=function(dt) {
@@ -24,12 +24,19 @@ NpcController.prototype.tick=function(dt) {
   this.timer-=dt;
   if(this.timer>0) return;
   if(this.steps<=0) {
-    a.stop();
-    var dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-    this.direction=dirs[Math.floor(Math.random()*dirs.length)];
-    this.steps=2+Math.floor(Math.random()*4);
-    this.timer=0.5+Math.random()*1.5;
-    return;
+    var continuous=this.c.mode==='continuous'||this.c.mode==='patrol';
+    if(!continuous) a.stop();
+    if(this.c.mode==='patrol') {
+      var circuit=[[1,0],[0,1],[-1,0],[0,-1]];
+      this.direction=circuit[this.patrolIndex++%4];
+      this.steps=this.direction[0]>0?c.maxX-npc.x:this.direction[0]<0?npc.x-c.minX:this.direction[1]>0?c.maxY-npc.y:npc.y-c.minY;
+      if(this.steps<1){this.timer=0.05;return;}
+    } else {
+      var dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+      this.direction=dirs[Math.floor(Math.random()*dirs.length)];
+      this.steps=this.c.mode==='continuous'?6+Math.floor(Math.random()*9):this.c.mode==='stroll'?4+Math.floor(Math.random()*5):2+Math.floor(Math.random()*4);
+    }
+    if(!continuous) {this.timer=this.c.mode==='stroll'?0.3+Math.random()*0.9:0.5+Math.random()*1.5;return;}
   }
   var x=npc.x+this.direction[0],y=npc.y+this.direction[1];
   if(x<c.minX || x>c.maxX || y<c.minY || y>c.maxY || !a.canWalk(x,y)) {this.steps=0;this.timer=0.3;a.stop();return;}

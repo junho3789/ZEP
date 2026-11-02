@@ -16,7 +16,7 @@ function runtime(initial='',options={}){
  addOnKeyDown(code,fn){events.key=fn;},runLater(fn,seconds){timers.push({fn,seconds});}};
  for(const name of ['onInit','onStart','onJoinPlayer','onUpdate','onTriggerObject','onAppObjectAttacked','onLeavePlayer','onSay'])app[name]={Add(fn){events[name]=fn;}};
  const map={width:options.width===undefined?30:options.width,height:options.height===undefined?30:options.height,getTile(layer,x,y){return options.tile?options.tile(layer,x,y):-1;},putObjectWithKey(x,y,sprite,opts){if(options.failId&&opts.key==='ai-npc:'+options.failId)throw Error('mock placement failure');const o={...opts,tileX:x,tileY:y,sendUpdated(){updates.push({key:opts.key,x:this.tileX,y:this.tileY,topObject:this.topObject});}};objects[opts.key]=o;return o;},getObjectWithKey:k=>objects[k],playObjectAnimationWithKey(key,name,repeats){animations.push({key,name,repeats});},moveObjectWithKey(k,x,y){objects[k].tileX=x;objects[k].tileY=y;return true;}};
- const context=vm.createContext({App:app,Map:map,console});
+ const context=vm.createContext({App:app,Map:map,console,...(options.random?{Math:Object.assign(Object.create(Math),{random:options.random})}:{})});
  vm.runInContext(['config.js','controller.js','dialogue.js','app.js'].map(n=>fs.readFileSync(path.join(ROOT,n),'utf8')).join('\n'),context);
  if(options.sprite)Object.assign(context.NPC_CONFIG.sprite,options.sprite);events.onInit();if(options.beforeStart)options.beforeStart({objects,map});if(!options.noStart)events.onStart();
  return {events,objects,timers,widgets,animations,updates,resources,p,app,map,get storage(){return storage;},get writes(){return writes;},drain(){for(const t of timers.splice(0))t.fn();},chat(text,id='one'){const w=widgets.at(-1);w.receive(p,{type:'npc.chat',requestId:id,message:text});this.drain();events.onUpdate(.7);return w.messages.at(-1);}};
@@ -174,11 +174,11 @@ test('admin relocation cannot interrupt an in-flight step and arrival is not ove
  r.p.tileX=20;r.p.tileY=20;r.events.onSay(r.p,'!npc-place moa');assert.equal(requests.length,2);r.events.onUpdate(.2);
  assert.deepEqual([r.objects['ai-npc:moa'].tileX,r.objects['ai-npc:moa'].tileY],[20,20]);
 });
-test('sprite feet align to tile bottom center and foreground switches by nearby player foot position',()=>{
+test('sprite feet align to tile center and foreground switches by nearby player foot position',()=>{
  const r=runtime('',{sprite:{frameWidth:48,frameHeight:64}}),npc=r.objects['ai-npc:moa'];
- assert.equal(npc.offsetX,-8);assert.equal(npc.offsetY,-32);
- r.p.tileX=8;r.p.tileY=7;r.events.onUpdate(.01);assert.equal(npc.topObject,true);
- r.p.tileY=9;r.events.onUpdate(.01);assert.equal(npc.topObject,false);
+ assert.equal(npc.offsetX,-8);assert.equal(npc.offsetY,-48);
+ r.p.tileX=8;r.p.tileY=7;r.events.onUpdate(.01);assert.equal(r.objects['ai-npc:moa'].topObject,true);
+ r.p.tileY=9;r.events.onUpdate(.01);assert.equal(r.objects['ai-npc:moa'].topObject,false);
 });
 test('foreground updates are deferred during a tween and contain only the arrived coordinates',()=>{
  const r=runtime('',{tile(layer){return layer===1?5:-1;}});r.p.role=3001;r.events.onSay(r.p,'!npc-place moa');r.p.tileX=25;r.p.tileY=25;const requests=[];
@@ -192,14 +192,66 @@ test('registered action buttons play once or loop and restore independent idle a
  const r=runtime('',{sprite:{actions,animations:{down:[0,1],left:[2,3],right:[4,5],up:[6,7],left_idle:[21],right_idle:[22],up_idle:[23],...extra}}});
  r.events.key(r.p);const w=r.widgets.at(-1);w.receive(r.p,{type:'npc.ready'});assert.equal(w.messages[0].actions.length,4);assert.deepEqual(r.resources[0][3].down_idle,[20]);
  const last=()=>r.animations.filter(a=>a.key==='ai-npc:moa').at(-1);
- w.receive(r.p,{type:'npc.action',actionId:'jump'});assert.equal(last().name,'jump');assert.equal(last().repeats,1);r.events.onUpdate(1);assert.equal(last().name,'down_idle');
+ w.receive(r.p,{type:'npc.action',actionId:'jump'});assert.equal(last().name,'jump');assert.equal(last().repeats,1);r.events.onUpdate(1);assert.equal(last().name,'right_idle');
  w.receive(r.p,{type:'npc.action',actionId:'dance'});r.events.onUpdate(2);assert.equal(last().name,'dance');assert.equal(last().repeats,-1);
  w.receive(r.p,{type:'npc.action',actionId:'sit'});assert.equal(last().name,'sit');w.receive(r.p,{type:'npc.action',actionId:'wave'});assert.equal(last().name,'wave');
- w.receive(r.p,{type:'npc.action',actionId:'idle'});assert.equal(last().name,'down_idle');
- w.receive(r.p,{type:'npc.action',actionId:'dance'});r.p.tileX=25;r.p.tileY=25;r.events.onUpdate(.2);assert.equal(last().name,'down_idle');
+ w.receive(r.p,{type:'npc.action',actionId:'idle'});assert.equal(last().name,'right_idle');
+ w.receive(r.p,{type:'npc.action',actionId:'dance'});r.p.tileX=25;r.p.tileY=25;r.events.onUpdate(.2);assert.equal(last().name,'right_idle');
 });
 test('forged senders or unknown action IDs cannot start arbitrary animations',()=>{
  const r=runtime();r.events.key(r.p);const w=r.widgets.at(-1),before=r.animations.length;
  w.receive({id:'intruder'},{type:'npc.action',actionId:'dance'});assert.equal(r.animations.length,before);
  w.receive(r.p,{type:'npc.action',actionId:'not_registered'});assert.equal(r.animations.length,before);assert.match(w.messages.at(-1).error,/등록되지 않은/);
+});
+test('nearby players set facing and directional jump and sit resolve to all four animations',()=>{
+ const animations={down:[0,1,2,3],left:[0,1,2,3],right:[0,1,2,3],up:[0,1,2,3],down_idle:[4],left_idle:[4],right_idle:[4],up_idle:[4]};
+ for(const d of ['down','left','right','up']){animations[d+'_jump']=[5,6];animations[d+'_sit']=[7];}
+ const r=runtime('',{sprite:{animations,actions:[{id:'jump',label:'점프',loop:false,directional:true},{id:'sit',label:'앉기',loop:true,directional:true}]}});
+ r.events.key(r.p);const w=r.widgets.at(-1);const last=()=>r.animations.filter(a=>a.key==='ai-npc:moa').at(-1);
+ for(const [direction,x,y]of [['up',8,7],['right',9,8],['down',8,9],['left',7,8]]){
+  r.p.tileX=x;r.p.tileY=y;r.events.onUpdate(.02);assert.equal(last().name,direction+'_idle');
+  w.receive(r.p,{type:'npc.action',actionId:'jump'});assert.equal(last().name,direction+'_jump');w.receive(r.p,{type:'npc.action',actionId:'idle'});
+  w.receive(r.p,{type:'npc.action',actionId:'sit'});assert.equal(last().name,direction+'_sit');w.receive(r.p,{type:'npc.action',actionId:'idle'});
+ }
+});
+test('foreground switching uses keyed placement packets at unchanged coordinates',()=>{
+ const r=runtime('',{sprite:{frameWidth:48,frameHeight:64,displayOffsetX:2,displayOffsetY:-3}});const nativePut=r.map.putObjectWithKey,packets=[];
+ r.map.putObjectWithKey=(x,y,res,opts)=>{packets.push({x,y,opts});return nativePut(x,y,res,opts);};
+ r.p.tileX=8;r.p.tileY=7;r.events.onUpdate(.02);r.p.tileY=9;r.events.onUpdate(.02);
+ const moa=packets.filter(p=>p.opts.key==='ai-npc:moa');assert.equal(moa.length,2);assert.deepEqual(moa.map(p=>p.opts.topObject),[true,false]);assert.ok(moa.every(p=>p.x===8&&p.y===8&&p.opts.offsetX===-6&&p.opts.offsetY===-51));
+});
+test('admin can create multiple independent NPCs with persisted modes and restart restoration',()=>{
+ const r=runtime(JSON.stringify({unrelated:42}));r.p.role=3001;r.events.onSay(r.p,'!npc-admin');const w=r.widgets.at(-1);w.receive(r.p,{type:'editor.ready'});let revision=0;
+ for(let i=0;i<5;i++){
+  w.receive(r.p,{type:'editor.create',name:'친구 '+i,style:'friendly',movementMode:i%2?'continuous':'stroll',expectedRevision:revision});const result=w.messages.at(-1);
+  assert.equal(result.type,'editor.created',JSON.stringify(result));revision=result.revision;assert.equal(result.personas[result.npcId].name,'친구 '+i);
+ }
+ assert.equal(Object.keys(r.objects).length,7);const stored=JSON.parse(r.storage);assert.equal(stored.unrelated,42);assert.equal(stored.aiNpcOfflineV2.characters.length,7);
+ const restarted=runtime(r.storage);assert.equal(Object.keys(restarted.objects).length,7);
+});
+test('NPC creation is rejected for stale revisions or revoked administrators without ghost objects',()=>{
+ const r=runtime();r.p.role=3001;r.events.onSay(r.p,'!npc-admin');const w=r.widgets.at(-1);w.receive(r.p,{type:'editor.ready'});
+ w.receive(r.p,{type:'editor.create',name:'추가',style:'friendly',expectedRevision:100});assert.equal(w.messages.at(-1).type,'editor.error');assert.equal(Object.keys(r.objects).length,2);
+ r.p.role=0;w.receive(r.p,{type:'editor.create',name:'권한없음',style:'friendly',expectedRevision:0});assert.equal(Object.keys(r.objects).length,2);assert.equal(r.writes,0);
+});
+test('NPC creation waits for durable storage confirmation',()=>{
+ const r=runtime();r.p.role=3001;r.events.onSay(r.p,'!npc-admin');const w=r.widgets.at(-1);w.receive(r.p,{type:'editor.ready'});r.app.setStorage=()=>{};
+ w.receive(r.p,{type:'editor.create',name:'저장실패',style:'friendly',movementMode:'varied',expectedRevision:0});r.drain();r.drain();assert.equal(w.messages.at(-1).type,'editor.error');assert.equal(Object.keys(r.objects).length,2);
+});
+test('continuous walking loops a four-frame animation once across multiple tile movements',()=>{
+ const def={id:'moa',name:'모아',style:'friendly',x:8,y:8,minX:1,maxX:28,minY:1,maxY:28,movementMode:'continuous',localPlacement:true};
+ const stored=JSON.stringify({aiNpcOfflineV2:{schema:2,revision:1,characters:[def],personas:{moa:D.defaults('moa','friendly')}}});
+ const r=runtime(stored,{random:()=>.01,sprite:{animations:{right:[0,1,2,3],down:[0,1,2,3],left:[0,1,2,3],up:[0,1,2,3],right_idle:[4],left_idle:[4],up_idle:[4],down_idle:[4]}}});
+ r.p.tileX=29;r.p.tileY=29;let moves=0;const nativeMove=r.map.moveObjectWithKey;r.map.moveObjectWithKey=(...args)=>{moves++;return nativeMove(...args);};
+ for(let i=0;i<80;i++)r.events.onUpdate(.1);assert.ok(moves>=4);assert.equal(r.animations.filter(a=>a.key==='ai-npc:moa'&&a.name==='right').length,1);assert.equal(r.objects['ai-npc:moa'].useDirAnim,false);
+});
+test('editing an NPC movement mode persists and restores the choice',()=>{
+ const r=runtime();r.p.role=3001;r.events.onSay(r.p,'!npc-admin');const w=r.widgets.at(-1);w.receive(r.p,{type:'editor.ready'});
+ w.receive(r.p,{type:'editor.save',npcId:'moa',expectedRevision:0,persona:D.defaults('moa','friendly'),movementMode:'patrol'});assert.equal(w.messages.at(-1).type,'editor.saved');
+ assert.equal(JSON.parse(r.storage).aiNpcOfflineV2.characters.find(c=>c.id==='moa').movementMode,'patrol');const next=runtime(r.storage);next.p.role=3001;next.events.onSay(next.p,'!npc-admin');const editor=next.widgets.at(-1);editor.receive(next.p,{type:'editor.ready'});assert.equal(editor.messages.at(-1).characters.find(c=>c.id==='moa').movementMode,'patrol');
+});
+test('looping directional sitting turns toward an approaching player without leaving the sitting action',()=>{
+ const animations={down:[0],left:[1],right:[2],up:[3],down_idle:[4],left_idle:[5],right_idle:[6],up_idle:[7],down_sit:[8],left_sit:[9],right_sit:[10],up_sit:[11]};
+ const r=runtime('',{sprite:{animations,actions:[{id:'sit',label:'앉기',directional:true,loop:true}]}});r.events.key(r.p);const w=r.widgets.at(-1);w.receive(r.p,{type:'npc.action',actionId:'sit'});r.p.tileX=8;r.p.tileY=7;r.events.onUpdate(.02);assert.equal(r.animations.filter(a=>a.key==='ai-npc:moa').at(-1).name,'up_sit');
+ r.p.tileY=9;r.events.onUpdate(.02);assert.equal(r.animations.filter(a=>a.key==='ai-npc:moa').at(-1).name,'down_sit');
 });
