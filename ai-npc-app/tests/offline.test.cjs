@@ -55,7 +55,7 @@ test('F opens local chat without network; identity is taken from ZEP sender',()=
 });
 test('walking away drops delayed replies and independent NPCs keep independent context',()=>{
  const r=runtime();r.events.key(r.p);const w=r.widgets[0];w.receive(r.p,{type:'npc.chat',requestId:'one',message:'산책'});r.p.tileX=25;r.p.tileY=25;r.events.onUpdate(.1);r.drain();assert.equal(w.destroyed,true);assert.equal(w.messages.length,0);
- r.p.tileX=9;r.p.tileY=8;r.events.key(r.p);r.chat('산책');r.widgets.at(-1).receive(r.p,{type:'npc.close'});r.p.tileX=12;r.events.key(r.p);const result=r.chat('좋아');assert.match(result.answer,/모르는|모르|소개/);
+ r.p.tileX=9;r.p.tileY=8;r.events.key(r.p);r.chat('산책');r.widgets.at(-1).receive(r.p,{type:'npc.close'});r.p.tileX=12;r.events.key(r.p);const result=r.chat('좋아');assert.ok(D.defaults('sage','calm').fallbacks.includes(result.answer));
 });
 test('non-admin cannot open or spoof editor access; revoked admin cannot save',()=>{
  const r=runtime();r.events.onSay(r.p,'!npc-admin');assert.equal(r.widgets.length,0);r.events.key(r.p);const w=r.widgets[0];w.receive(r.p,{type:'npc.editor',role:3001});assert.equal(r.widgets.length,1);
@@ -102,4 +102,32 @@ test('fully blocked patrol areas can be recovered by an admin from a clear locat
 test('missing sprite is reported while editor and diagnostics remain usable',()=>{
  const r=runtime('',{badSprite:true});assert.equal(Object.keys(r.objects).length,0);r.p.role=3001;r.events.onSay(r.p,'!npc-status');assert.ok(r.p.notifications.some(s=>s.includes('스프라이트')));
  r.events.onSay(r.p,'!npc-admin');assert.equal(r.widgets.at(-1).file,'editor.html');
+});
+test('reported spawn tile can host an NPC even when every neighboring tile fails the empty search',()=>{
+ const r=runtime('',{width:141,height:94,tile(layer,x,y){if(layer===1)return x===84&&y===59?-1:5;if(layer===2&&x===84&&y===59)return 2;return -1;}});
+ r.p.role=3001;r.p.tileX=84;r.p.tileY=59;r.events.onSay(r.p,'!npc-here');assert.equal(Object.keys(r.objects).length,0);
+ r.events.onSay(r.p,'!npc-place moa');assert.equal(Object.keys(r.objects).length,1);assert.equal(r.objects['ai-npc:moa'].tileX,84);assert.equal(r.objects['ai-npc:moa'].tileY,59);
+ r.events.onSay(r.p,'!npc-place sage');assert.equal(Object.keys(r.objects).length,1);assert.ok(r.p.notifications.some(s=>s.includes('이미 다른 NPC')));
+});
+test('direct placement requires actual admin role and still rejects impassable standing tiles',()=>{
+ const r=runtime('',{tile(layer){return layer===1?5:-1;}});r.events.onSay(r.p,'!npc-place moa');assert.equal(Object.keys(r.objects).length,0);
+ r.p.role=3001;r.map.getTile=layer=>layer===2?1:-1;r.events.onSay(r.p,'!npc-place moa');assert.equal(Object.keys(r.objects).length,0);assert.ok(r.p.notifications.some(s=>s.includes('통행 불가')));
+ r.map.getTile=layer=>layer===3?12:layer===2?2:-1;r.events.onSay(r.p,'!npc-place moa');assert.equal(Object.keys(r.objects).length,1);
+});
+test('placing an existing NPC moves its key without duplication and separate positions allow two NPCs',()=>{
+ const r=runtime('',{tile(layer){return layer===1?5:-1;}});r.p.role=3001;r.p.tileX=84;r.p.tileY=59;r.map.width=141;r.map.height=94;r.map.getTile=layer=>layer===2?2:-1;
+ r.events.onSay(r.p,'!npc-place moa');r.p.tileX=87;r.events.onSay(r.p,'!npc-place moa');assert.equal(Object.keys(r.objects).length,1);assert.equal(r.objects['ai-npc:moa'].tileX,87);
+ r.p.tileX=84;r.events.onSay(r.p,'!npc-place sage');assert.equal(Object.keys(r.objects).length,2);assert.equal(r.objects['ai-npc:sage'].tileX,84);
+});
+test('nearby diagnostics distinguish occupied standing tile from neighboring graphic obstacles',()=>{
+ const r=runtime('',{tile(layer,x,y){return layer===1&&x===8&&y===8?4:-1;}});r.p.role=3001;r.events.onSay(r.p,'!npc-status');const around=r.p.notifications.find(s=>s.startsWith('[NPC 주변 판정]'));
+ assert.match(around,/벽 그림/);assert.match(around,/유저 위치/);
+});
+test('roaming attempts native paths over graphics while respecting host-rejected movement',()=>{
+ const r=runtime('',{tile(layer){return layer===1?5:-1;}});r.p.role=3001;r.events.onSay(r.p,'!npc-place moa');
+ const n=r.objects['ai-npc:moa'],origin=[n.tileX,n.tileY],attempts=[];r.p.tileX=25;r.p.tileY=25;
+ r.map.moveObjectWithKey=(key,x,y,usePath)=>{attempts.push({key,x,y,usePath});return false;};
+ for(let i=0;i<20;i++)r.events.onUpdate(.6);
+ assert.ok(attempts.length>0);assert.ok(attempts.every(x=>x.usePath===true));assert.deepEqual([n.tileX,n.tileY],origin);
+ r.map.getTile=layer=>layer===2?'1':-1;const count=attempts.length;for(let i=0;i<10;i++)r.events.onUpdate(.6);assert.equal(attempts.length,count);
 });

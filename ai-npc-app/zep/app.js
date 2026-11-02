@@ -4,7 +4,7 @@
     var npcs = [], chats = {}, editors = {}, conversations = {}, clock = 0;
     var personas = {}, storeRevision = 0, storageReady = false, storageError = "", saving = false;
     var STORE_KEY = "aiNpcOfflineV2";
-    var VERSION = "2.0.1", sprite = null, resourceError = "", failures = {}, started = false;
+    var VERSION = "2.0.2", sprite = null, resourceError = "", failures = {}, started = false;
     function problem(id, error) { failures[id] = String(error && error.message ? error.message : error).slice(0, 240); }
     function admin(p) { return p && (p.role === 3000 || p.role === 3001); }
     function player(id) {
@@ -183,21 +183,26 @@
             });
         });
     }
-    function canWalk(n, x, y) {
-        if (x < 0 || y < 0 || x >= Map.width || y >= Map.height) return false;
+    function blocked(n, x, y, nativePath) {
+        if (x < 0 || y < 0 || x >= Map.width || y >= Map.height) return "맵 경계";
         // Conservative policy: avoid all map objects, walls and impassable effect tiles.
-        if (Map.getTile(1, x, y) >= 0 || Map.getTile(2, x, y) === 1 ||
-            Map.getTile(3, x, y) >= 0 || Map.getTile(5, x, y) >= 0) return false;
+        if (Number(Map.getTile(2, x, y)) === 1) return "통행 불가";
+        if (!nativePath) {
+            if (Number(Map.getTile(1, x, y)) >= 0) return "벽 그림";
+            if (Number(Map.getTile(3, x, y)) >= 0) return "오브젝트 그림";
+            if (Number(Map.getTile(5, x, y)) >= 0) return "상단 그림";
+        }
         for (var i = 0; i < npcs.length; i++) {
             if (npcs[i] === n) continue;
             var q = position(npcs[i]);
-            if (q.x === x && q.y === y) return false;
+            if (q.x === x && q.y === y) return "다른 NPC";
         }
         for (var j = 0; j < App.players.length; j++) {
-            if (App.players[j].tileX === x && App.players[j].tileY === y) return false;
+            if (Number(App.players[j].tileX) === x && Number(App.players[j].tileY) === y) return "유저 위치";
         }
-        return true;
+        return "";
     }
+    function canWalk(n, x, y) { return !blocked(n, x, y); }
     function dimensions() {
         if (!(Map.width > 0 && Map.height > 0)) throw new Error("맵 크기를 아직 읽을 수 없어요");
         return { width: Math.floor(Map.width), height: Math.floor(Map.height) };
@@ -231,14 +236,14 @@
         }
         throw new Error("배회 영역에 빈 타일이 없어요. 빈 공간에서 !npc-here를 사용해 주세요");
     }
-    function create(def) {
+    function create(def, exact) {
         if (!/^[a-z0-9_-]{1,64}$/.test(def.id)) throw new Error("Invalid NPC ID");
         if (npcs.some(function (n) { return n.id === def.id; })) throw new Error("Duplicate NPC ID");
         if ([def.x, def.y, def.minX, def.maxX, def.minY, def.maxY].some(function (v) {
             return typeof v !== "number" || !isFinite(v) || Math.floor(v) !== v;
         })) throw new Error("NPC 좌표는 정수여야 해요");
         def = clipped(def);
-        var spawn = freeTile(def);
+        var spawn = exact || freeTile(def);
         def.x = spawn.x; def.y = spawn.y;
         var n = { id: def.id, key: "ai-npc:" + def.id, name: personas[def.id] ? personas[def.id].name : def.name };
         Map.putObjectWithKey(def.x, def.y, sprite, { key: n.key, type: 21,
@@ -250,7 +255,9 @@
         var adapter = {
             position: function () { return position(n); },
             players: function () { return App.players.map(function (p) { return { id: p.id, x: p.tileX, y: p.tileY }; }); },
-            canWalk: function (x, y) { return canWalk(n, x, y); },
+            // Graphics alone do not establish collision. ZEP pathfinding is
+            // authoritative; explicit impassable tiles and actors are filtered here.
+            canWalk: function (x, y) { return !blocked(n, x, y, true); },
             step: function (x, y, seconds) { Map.moveObjectWithKey(n.key, x, y, true, seconds); },
             stop: function () { var q = position(n); Map.moveObjectWithKey(n.key, q.x, q.y, false, 0.01); },
             openChat: function (p) { var actual = player(p.id); if (actual) open(n, actual); },
@@ -260,6 +267,35 @@
             resumeRadius: NPC_CONFIG.resumeRadius, minX: def.minX, maxX: def.maxX, minY: def.minY, maxY: def.maxY });
         npcs.push(n);
         delete failures[n.id];
+        return n;
+    }
+    function placeAtPlayer(p, id) {
+        var original = NPC_CONFIG.characters.filter(function (d) { return d.id === id; })[0];
+        if (!original) throw new Error("NPC ID는 " + NPC_CONFIG.characters.map(function (d) { return d.id; }).join(", ") + " 중에서 선택해 주세요");
+        if (!sprite) loadSprite();
+        if (!sprite) throw new Error(resourceError || "이미지를 로드하지 못했어요");
+        var x = Number(p.tileX), y = Number(p.tileY), size = dimensions();
+        if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= size.width || y >= size.height) throw new Error("현재 유저 좌표가 올바르지 않아요");
+        if (Number(Map.getTile(2, x, y)) === 1) throw new Error("현재 타일은 통행 불가로 표시돼 있어요. 한 걸음 이동해 주세요");
+        var n = npcs.filter(function (item) { return item.id === id; })[0];
+        npcs.forEach(function (other) {
+            if (other === n) return;
+            var q = position(other);
+            if (q.x === x && q.y === y) throw new Error("이미 다른 NPC가 있는 자리예요. 두세 타일 이동한 뒤 다시 입력해 주세요");
+        });
+        // Explicit admin placement overlays a new keyed app object at the user's
+        // standing tile. It does not remove or replace editor map objects.
+        var area = clipped(original, p);
+        if (!n) n = create(area, { x: x, y: y });
+        else {
+            Object.keys(chats).forEach(function (uid) { if (chats[uid].npc === n) close(uid); });
+            if (Map.moveObjectWithKey(n.key, x, y, false, 0.01) === false) throw new Error("직접 배치 요청이 거부됐어요");
+        }
+        n.controller.c.minX = area.minX; n.controller.c.maxX = area.maxX;
+        n.controller.c.minY = area.minY; n.controller.c.maxY = area.maxY;
+        n.controller.state = "waiting"; n.controller.steps = 0;
+        delete failures[id];
+        p.sendMessage("[NPC " + VERSION + "] " + n.name + " 직접 배치 요청: (" + x + ", " + y + "). 캐릭터가 겹쳐 보이면 두세 타일 이동해 주세요.");
     }
     function interact(p, key) {
         var best = null, d = Infinity;
@@ -298,6 +334,13 @@
             try { p.sendMessage("[NPC 현재 타일] (" + p.tileX + ", " + p.tileY + ") · 벽=" + Map.getTile(1, p.tileX, p.tileY) +
                 " 효과=" + Map.getTile(2, p.tileX, p.tileY) + " 오브젝트=" + Map.getTile(3, p.tileX, p.tileY) + " 상단=" + Map.getTile(5, p.tileX, p.tileY)); }
             catch (e) { p.sendMessage("[NPC 현재 타일] 조회 실패"); }
+            var around = [];
+            for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+                try { var x = Number(p.tileX) + dx, y = Number(p.tileY) + dy;
+                    around.push("(" + x + "," + y + ")=" + (blocked(null, x, y) || "비어 있음")); }
+                catch (e) { around.push("타일 조회 실패"); }
+            }
+            p.sendMessage("[NPC 주변 판정] " + around.join(" / "));
         }
     }
     App.onInit.Add(function () { loadSprite(); try { load(); } catch (e) { storageError = String(e.message || e); } });
@@ -306,7 +349,7 @@
     App.onJoinPlayer.Add(function (p) {
         App.runLater(function () {
             spawnMissing();
-            if (admin(p)) p.sendMessage("[NPC " + VERSION + "] !npc-status로 생성 상태 확인 · !npc-here로 근처에 배치");
+            if (admin(p)) p.sendMessage("[NPC " + VERSION + "] !npc-status 상태 확인 · !npc-place moa 현재 자리에 직접 배치");
         }, 0.2);
     });
     App.onUpdate.Add(function (dt) {
@@ -329,6 +372,11 @@
         Object.keys(conversations).forEach(function (key) { if (key.indexOf(id + ":") === 0) delete conversations[key]; });
     });
     App.onSay.Add(function (p, text) {
+        if (/^!npc-place(?:\s|$)/.test(text) && admin(p)) {
+            var selected = text.trim().split(/\s+/)[1] || NPC_CONFIG.characters[0].id;
+            try { placeAtPlayer(p, selected); } catch (e) { problem(selected, e); p.sendMessage("[NPC 직접 배치] " + String(e.message || e)); }
+            return;
+        }
         if (text === "!npc-status") { status(p); return; }
         if (text === "!npc-here" && admin(p)) {
             spawnMissing(p);
