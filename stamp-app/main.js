@@ -3,6 +3,8 @@ var CONFIG = {
   eventId: 'stamp-event-01',
   requiredStamps: 4,
   formUrl: '',
+  foundStampId: 's4',
+  foundMessage: '뉴턴을 찾았습니다.',
   // 동일 링크의 연속 F 입력에 의한 팝업 중첩 방지
   popupCooldownMs: 1200,
   deskNumber: '205',
@@ -22,7 +24,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.5.5-original-stamp4';
+  var VERSION = '1.6-fourth-close';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -171,8 +173,65 @@ var CONFIG = {
     return true;
   }
 
+  // 기본 웹링크 API에는 닫기 콜백이 없어 4번만 전용 위젯을 사용합니다.
+  function closeFourthLink(session, showFound) {
+    var panel = session.fourthLink;
+    if (!panel) return true;
+    try { panel.widget.destroy(); }
+    catch (error) {
+      notify(session.player, '링크 창을 닫지 못했습니다. 닫기 버튼을 다시 눌러주세요.');
+      return false;
+    }
+    session.fourthLink = null;
+    panel.active = false;
+    if (!showFound || !panel.ready || panel.eventId !== CONFIG.eventId) return true;
+    try {
+      var progress = readProgress(session.player);
+      // 링크 열기/저장 실패 또는 관리자 초기화 후에는 발견 팝업을 띄우지 않습니다.
+      if (progress.ids.indexOf(panel.stampId) < 0) return true;
+      session.player.showAlert(CONFIG.foundMessage);
+    } catch (error) {
+      notify(session.player, '발견 안내를 표시하지 못했습니다. 스탬프 현황을 확인해 주세요.');
+    }
+    return true;
+  }
+
+  function openFourthLink(session, url, object) {
+    if (!session || session.fourthLink) return false;
+    var panel;
+    try {
+      var widget = session.player.showWidgetResponsive('stamp-link.html', 0, 0, 0, 0);
+      panel = {
+        widget: widget, active: true, ready: false,
+        stampId: object.id, eventId: CONFIG.eventId
+      };
+      session.fourthLink = panel;
+      widget.onMessage.Add(function (sender, data) {
+        if (sender !== session.player || session.fourthLink !== panel || !panel.active || !data) return;
+        if (data.type === 'link_ready') {
+          try {
+            widget.sendMessage({type: 'link_state', url: url, title: object.name});
+            panel.ready = true;
+          } catch (error) {
+            closeFourthLink(session, false);
+            notify(session.player, '링크 창을 준비하지 못했습니다. 오브젝트를 다시 이용하세요.');
+          }
+        } else if (data.type === 'link_close') {
+          closeFourthLink(session, true);
+        }
+      });
+      session.lastPopupUrl = url;
+      session.lastPopupAt = Date.now();
+      return true;
+    } catch (error) {
+      if (panel) closeFourthLink(session, false);
+      notify(session.player, '링크 창을 열지 못했습니다. 다시 시도하세요.');
+      return false;
+    }
+  }
+
   // 링크 열기 호출 성공을 지급 기준으로 사용합니다. 실제 로딩은 검증하지 않습니다.
-  function openLink(player, url) {
+  function openLink(player, url, object) {
     if (typeof url !== 'string' || !/^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(url)) {
       notify(player, '링크가 아직 설정되지 않았습니다. 관리자에게 문의하세요.');
       return false;
@@ -181,6 +240,9 @@ var CONFIG = {
     var now = Date.now();
     if (session && session.lastPopupUrl === url &&
         now - session.lastPopupAt < CONFIG.popupCooldownMs) return false;
+    if (object && object.id === CONFIG.foundStampId) {
+      return openFourthLink(session, url, object);
+    }
     try {
       // 공식 SDK: 두 번째 인자가 true이면 ZEP 팝업으로 표시합니다.
       player.openWebLink(url, true);
@@ -206,7 +268,7 @@ var CONFIG = {
   }
 
   function handleStamp(player, progress, object) {
-    if (!openLink(player, object.url)) return;
+    if (!openLink(player, object.url, object)) return;
     if (progress.ids.indexOf(object.id) >= 0) {
       notify(player, '이미 획득한 스탬프입니다.');
       return;
@@ -258,6 +320,7 @@ var CONFIG = {
       target.save();
       session.lastPopupUrl = null;
       session.lastPopupAt = 0;
+      closeFourthLink(session, false);
     } catch (error) {
       target.storage = previousStorage;
       return false;
@@ -397,13 +460,17 @@ var CONFIG = {
   });
 
   App.onDestroy.Add(function () {
-    sessions.forEach(destroyWidget);
+    sessions.forEach(function (session) {
+      closeFourthLink(session, false);
+      destroyWidget(session);
+    });
     sessions = [];
   });
 
   App.onLeavePlayer.Add(function (player) {
     sessions = sessions.filter(function (session) {
       if (session.player !== player) return true;
+      closeFourthLink(session, false);
       destroyWidget(session);
       return false;
     });

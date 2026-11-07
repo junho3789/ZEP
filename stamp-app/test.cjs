@@ -16,10 +16,11 @@ function createApp() {
   vm.runInContext(source, context);
   context.CONFIG.objects.forEach(object => { object.url = 'https://example.com/' + object.id; });
   context.CONFIG.formUrl = 'https://forms.gle/test';
-  const messages = [], links = [], widgets = [];
+  const messages = [], links = [], widgets = [], linkWidgets = [], alerts = [];
   const player = {
     storage: JSON.stringify({ other: 42 }),
     save() {},
+    showAlert(text) { alerts.push(text); },
     sendMessage: text => messages.push(text),
     openWebLink: (...args) => links.push(args),
     showWidget(...args) { return this.showWidgetResponsive(...args); },
@@ -30,7 +31,8 @@ function createApp() {
         sendMessage(state) { this.state = state; },
         onMessage: { Add(callback) { widget.receive = callback; } }
       };
-      widgets.push(widget);
+      if (args[0] === 'stamp-link.html') linkWidgets.push(widget);
+      else widgets.push(widget);
       return widget;
     }
   };
@@ -41,22 +43,29 @@ function createApp() {
   events.onJoinPlayer(player);
   ready();
   return {
-    context, events, player, messages, links, widgets, ready,
+    context, events, player, messages, links, widgets, linkWidgets, alerts, ready,
     advance(ms = 1201) { now += ms; },
     hit(number, value) {
       events.onObjectTouched(player, 0, 0, 0, { type: 21, text: number, param1: value });
     },
-    collectAll() { for (let i = 1; i <= 4; i++) this.hit(200 + i, 'stamp:' + i); }
+    collectAll() {
+      for (let i = 1; i <= 4; i++) this.hit(200 + i, 'stamp:' + i);
+      const link = linkWidgets.at(-1);
+      if (link && !link.dead) {
+        link.receive(player, {type:'link_ready'});
+        link.receive(player, {type:'link_close'});
+      }
+    }
   };
 }
 
- test('programs and eligible desk use the native ZEP popup API', () => {
+ test('first three programs and eligible desk use the native popup API', () => {
   const app = createApp();
   app.hit(205, 'stamp:desk');
   assert.equal(app.links.length, 0);
   app.collectAll();
   app.hit(205, 'stamp:desk');
-  assert.equal(app.links.length, 5);
+  assert.equal(app.links.length, 4);
   assert.ok(app.links.every(args => args[1] === true));
   assert.equal(app.links.at(-1)[0], 'https://forms.gle/test');
   assert.equal(app.widgets.at(-1).state.count, 4);
@@ -68,10 +77,10 @@ test('repeated F at desk is throttled, but reopening later works', () => {
   app.collectAll();
   app.hit(205, 'stamp:desk');
   for (let i = 0; i < 10; i++) app.hit(205, 'stamp:desk');
-  assert.equal(app.links.length, 5);
+  assert.equal(app.links.length, 4);
   app.advance();
   app.hit(205, 'stamp:desk');
-  assert.equal(app.links.length, 6);
+  assert.equal(app.links.length, 5);
 });
 
 test('revisiting a program reopens popup without a duplicate stamp', () => {
@@ -148,7 +157,7 @@ test('popup exception leaves interaction unlocked for a subsequent attempt', () 
   app.hit(205, 'stamp:desk');
   app.player.openWebLink = open;
   app.hit(205, 'stamp:desk');
-  assert.equal(app.links.length, 5);
+  assert.equal(app.links.length, 4);
 });
 
 test('save failure restores old storage and allows retry after cooldown', () => {
@@ -462,4 +471,89 @@ test('fourth stamp embeds the uploaded PNG byte-for-byte', () => {
   const uri = assignment.split("'")[0];
   const original = fs.readFileSync(__dirname + '/stamp-four.png');
   assert.deepEqual(Buffer.from(uri.split(',')[1], 'base64'), original);
+});
+
+
+test('fourth program closes before showing the Newton found alert', () => {
+  const app = createApp();
+  app.hit(204,'stamp:4');
+  assert.equal(app.links.length,0);
+  assert.equal(app.alerts.length,0);
+  const link=app.linkWidgets.at(-1);
+  link.receive(app.player,{type:'link_ready'});
+  assert.equal(link.state.url,'https://example.com/s4');
+  assert.equal(app.widgets.at(-1).state.count,1);
+  link.receive(app.player,{type:'link_close'});
+  assert.equal(link.dead,true);
+  assert.deepEqual(app.alerts,['뉴턴을 찾았습니다.']);
+  link.receive(app.player,{type:'link_close'});
+  assert.equal(app.alerts.length,1);
+});
+
+test('foreign or stale popup messages cannot show a found alert', () => {
+  const app=createApp();
+  app.hit(204,'stamp:4');
+  const link=app.linkWidgets.at(-1);
+  link.receive({}, {type:'link_ready'});
+  link.receive({}, {type:'link_close'});
+  assert.equal(app.alerts.length,0);
+  assert.equal(link.dead,false);
+  link.receive(app.player,{type:'link_ready'});
+  app.events.onLeavePlayer(app.player);
+  link.receive(app.player,{type:'link_close'});
+  assert.equal(link.dead,true);
+  assert.equal(app.alerts.length,0);
+});
+
+test('save failure and administrator reset do not display found after close', () => {
+  const app=createApp();
+  app.player.save=()=>{throw Error('save failed');};
+  app.hit(204,'stamp:4');
+  let link=app.linkWidgets.at(-1);
+  link.receive(app.player,{type:'link_ready'});
+  link.receive(app.player,{type:'link_close'});
+  assert.equal(app.alerts.length,0);
+  app.player.save=()=>{};
+  app.advance();
+  app.hit(204,'stamp:4');
+  link=app.linkWidgets.at(-1);
+  link.receive(app.player,{type:'link_ready'});
+  app.player.role=3000;
+  say(app,'!stamp-reset me');
+  say(app,'!stamp-reset confirm');
+  link.receive(app.player,{type:'link_close'});
+  assert.equal(link.dead,true);
+  assert.equal(app.alerts.length,0);
+});
+
+test('repeated fourth-object interaction does not stack link windows or stamps', () => {
+  const app=createApp();
+  app.hit(204,'stamp:4');
+  app.advance();
+  app.hit(204,'stamp:4');
+  assert.equal(app.linkWidgets.length,1);
+  assert.equal(savedIds(app.player).length,1);
+  const link=app.linkWidgets[0];
+  link.receive(app.player,{type:'link_ready'});
+  link.receive(app.player,{type:'link_close'});
+  app.advance();
+  app.hit(204,'stamp:4');
+  const second=app.linkWidgets[1];
+  second.receive(app.player,{type:'link_ready'});
+  second.receive(app.player,{type:'link_close'});
+  assert.equal(savedIds(app.player).length,1);
+  assert.equal(app.alerts.length,2);
+});
+
+test('failed popup destruction allows retry without prematurely announcing found', () => {
+  const app=createApp();
+  app.hit(204,'stamp:4');
+  const link=app.linkWidgets[0];
+  link.receive(app.player,{type:'link_ready'});
+  link.destroy=()=>{throw Error('temporary');};
+  link.receive(app.player,{type:'link_close'});
+  assert.equal(app.alerts.length,0);
+  link.destroy=function(){this.dead=true;return false;};
+  link.receive(app.player,{type:'link_close'});
+  assert.equal(app.alerts.length,1);
 });
