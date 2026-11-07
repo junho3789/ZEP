@@ -7,7 +7,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent
 FILES = ('main.js', 'stamp-ui.html', 'stamp-mini.html')
-DESTINATION = ROOT / 'zep-object-stamps-v1.5.4.zepapp.zip'
+DESTINATION = ROOT / 'zep-object-stamps-v1.5.5.zepapp.zip'
 
 
 def main():
