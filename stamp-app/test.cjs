@@ -16,7 +16,7 @@ function createApp() {
   vm.runInContext(source, context);
   context.CONFIG.objects.forEach(object => { object.url = 'https://example.com/' + object.id; });
   context.CONFIG.formUrl = 'https://forms.gle/test';
-  const messages = [], links = [], widgets = [], linkWidgets = [], alerts = [];
+  const messages = [], links = [], widgets = [], cardWidgets = [], alerts = [];
   const player = {
     storage: JSON.stringify({ other: 42 }),
     save() {},
@@ -31,7 +31,7 @@ function createApp() {
         sendMessage(state) { this.state = state; },
         onMessage: { Add(callback) { widget.receive = callback; } }
       };
-      if (args[0] === 'stamp-link.html') linkWidgets.push(widget);
+      if (args[0] === 'stamp-special.html') cardWidgets.push(widget);
       else widgets.push(widget);
       return widget;
     }
@@ -43,17 +43,17 @@ function createApp() {
   events.onJoinPlayer(player);
   ready();
   return {
-    context, events, player, messages, links, widgets, linkWidgets, alerts, ready,
+    context, events, player, messages, links, widgets, cardWidgets, alerts, ready,
     advance(ms = 1201) { now += ms; },
     hit(number, value) {
       events.onObjectTouched(player, 0, 0, 0, { type: 21, text: number, param1: value });
     },
     collectAll() {
       for (let i = 1; i <= 4; i++) this.hit(200 + i, 'stamp:' + i);
-      const link = linkWidgets.at(-1);
+      const link = cardWidgets.at(-1);
       if (link && !link.dead) {
-        link.receive(player, {type:'link_ready'});
-        link.receive(player, {type:'link_close'});
+        link.receive(player, {type:'card_ready'});
+        link.receive(player, {type:'card_close'});
       }
     }
   };
@@ -474,33 +474,34 @@ test('fourth stamp embeds the uploaded PNG byte-for-byte', () => {
 });
 
 
-test('fourth program closes before showing the Newton found alert', () => {
+test('fourth stamp shows a card and never shows a separate found alert', () => {
   const app = createApp();
   app.hit(204,'stamp:4');
   assert.equal(app.links.length,0);
   assert.equal(app.alerts.length,0);
-  const link=app.linkWidgets.at(-1);
-  link.receive(app.player,{type:'link_ready'});
-  assert.equal(link.state.url,'https://example.com/s4');
+  const link=app.cardWidgets.at(-1);
+  link.receive(app.player,{type:'card_ready'});
+  assert.equal(link.state.heading,'뉴턴을 찾았습니다.');
+  assert.equal(link.state.url,undefined);
   assert.equal(app.widgets.at(-1).state.count,1);
-  link.receive(app.player,{type:'link_close'});
+  link.receive(app.player,{type:'card_close'});
   assert.equal(link.dead,true);
-  assert.deepEqual(app.alerts,['뉴턴을 찾았습니다.']);
-  link.receive(app.player,{type:'link_close'});
-  assert.equal(app.alerts.length,1);
+  assert.deepEqual(app.alerts,[]);
+  link.receive(app.player,{type:'card_close'});
+  assert.equal(app.alerts.length,0);
 });
 
 test('foreign or stale popup messages cannot show a found alert', () => {
   const app=createApp();
   app.hit(204,'stamp:4');
-  const link=app.linkWidgets.at(-1);
-  link.receive({}, {type:'link_ready'});
-  link.receive({}, {type:'link_close'});
+  const link=app.cardWidgets.at(-1);
+  link.receive({}, {type:'card_ready'});
+  link.receive({}, {type:'card_close'});
   assert.equal(app.alerts.length,0);
   assert.equal(link.dead,false);
-  link.receive(app.player,{type:'link_ready'});
+  link.receive(app.player,{type:'card_ready'});
   app.events.onLeavePlayer(app.player);
-  link.receive(app.player,{type:'link_close'});
+  link.receive(app.player,{type:'card_close'});
   assert.equal(link.dead,true);
   assert.equal(app.alerts.length,0);
 });
@@ -509,19 +510,19 @@ test('save failure and administrator reset do not display found after close', ()
   const app=createApp();
   app.player.save=()=>{throw Error('save failed');};
   app.hit(204,'stamp:4');
-  let link=app.linkWidgets.at(-1);
-  link.receive(app.player,{type:'link_ready'});
-  link.receive(app.player,{type:'link_close'});
+  let link=app.cardWidgets.at(-1);
+  link.receive(app.player,{type:'card_ready'});
+  link.receive(app.player,{type:'card_close'});
   assert.equal(app.alerts.length,0);
   app.player.save=()=>{};
   app.advance();
   app.hit(204,'stamp:4');
-  link=app.linkWidgets.at(-1);
-  link.receive(app.player,{type:'link_ready'});
+  link=app.cardWidgets.at(-1);
+  link.receive(app.player,{type:'card_ready'});
   app.player.role=3000;
   say(app,'!stamp-reset me');
   say(app,'!stamp-reset confirm');
-  link.receive(app.player,{type:'link_close'});
+  link.receive(app.player,{type:'card_close'});
   assert.equal(link.dead,true);
   assert.equal(app.alerts.length,0);
 });
@@ -531,29 +532,84 @@ test('repeated fourth-object interaction does not stack link windows or stamps',
   app.hit(204,'stamp:4');
   app.advance();
   app.hit(204,'stamp:4');
-  assert.equal(app.linkWidgets.length,1);
+  assert.equal(app.cardWidgets.length,1);
   assert.equal(savedIds(app.player).length,1);
-  const link=app.linkWidgets[0];
-  link.receive(app.player,{type:'link_ready'});
-  link.receive(app.player,{type:'link_close'});
+  const link=app.cardWidgets[0];
+  link.receive(app.player,{type:'card_ready'});
+  link.receive(app.player,{type:'card_close'});
   app.advance();
   app.hit(204,'stamp:4');
-  const second=app.linkWidgets[1];
-  second.receive(app.player,{type:'link_ready'});
-  second.receive(app.player,{type:'link_close'});
+  const second=app.cardWidgets[1];
+  second.receive(app.player,{type:'card_ready'});
+  second.receive(app.player,{type:'card_close'});
   assert.equal(savedIds(app.player).length,1);
-  assert.equal(app.alerts.length,2);
+  assert.equal(app.alerts.length,0);
 });
 
 test('failed popup destruction allows retry without prematurely announcing found', () => {
   const app=createApp();
   app.hit(204,'stamp:4');
-  const link=app.linkWidgets[0];
-  link.receive(app.player,{type:'link_ready'});
+  const link=app.cardWidgets[0];
+  link.receive(app.player,{type:'card_ready'});
   link.destroy=()=>{throw Error('temporary');};
-  link.receive(app.player,{type:'link_close'});
+  link.receive(app.player,{type:'card_close'});
   assert.equal(app.alerts.length,0);
   link.destroy=function(){this.dead=true;return false;};
-  link.receive(app.player,{type:'link_close'});
-  assert.equal(app.alerts.length,1);
+  link.receive(app.player,{type:'card_close'});
+  assert.equal(app.alerts.length,0);
+});
+
+
+test('fourth stamp needs no URL and only the other programs require links', () => {
+  const app=createApp();
+  app.context.CONFIG.objects.forEach(object=>{object.url='';});
+  app.hit(201,'stamp:1');
+  assert.equal(app.widgets.at(-1).state.count,0);
+  app.hit(204,'stamp:4');
+  assert.deepEqual(savedIds(app.player),['s4']);
+  const card=app.cardWidgets[0];
+  card.receive(app.player,{type:'card_ready'});
+  assert.equal(card.state.type,'card_state');
+  assert.equal(card.state.heading,'뉴턴을 찾았습니다.');
+  assert.equal(app.links.length,0);
+  card.receive(app.player,{type:'card_close'});
+  assert.equal(app.alerts.length,0);
+});
+
+test('failed card creation does not grant a stamp', () => {
+  const app=createApp();
+  app.player.showWidgetResponsive=()=>{throw Error('create failed');};
+  app.hit(204,'stamp:4');
+  assert.equal(savedIds(app.player),undefined);
+  assert.equal(app.cardWidgets.length,0);
+});
+
+test('a failed stamp save immediately removes the card without a discovery state', () => {
+  const app=createApp();
+  app.player.save=()=>{throw Error('save failed');};
+  app.hit(204,'stamp:4');
+  const card=app.cardWidgets[0];
+  assert.equal(card.dead,true);
+  card.receive(app.player,{type:'card_ready'});
+  assert.equal(card.state,undefined);
+  assert.equal(savedIds(app.player),undefined);
+  assert.equal(app.alerts.length,0);
+});
+
+test('card data delivery failure cleans the overlay without altering saved stamps', () => {
+  const app=createApp();
+  app.hit(204,'stamp:4');
+  const card=app.cardWidgets[0];
+  card.sendMessage=()=>{throw Error('send failed');};
+  card.receive(app.player,{type:'card_ready'});
+  assert.equal(card.dead,true);
+  assert.deepEqual(savedIds(app.player),['s4']);
+  assert.equal(app.alerts.length,0);
+});
+
+test('special card keeps the uploaded character bytes and has no web iframe', () => {
+  const html=fs.readFileSync(__dirname+'/stamp-special.html','utf8');
+  const image=html.split('id="character" src="')[1].split('"')[0];
+  assert.deepEqual(Buffer.from(image.split(',')[1],'base64'),fs.readFileSync(__dirname+'/stamp-four.png'));
+  assert.ok(!html.includes('<iframe'));
 });

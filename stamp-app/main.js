@@ -17,14 +17,14 @@ var CONFIG = {
     { id: 's1', number: '201', value: 'stamp:1', name: '프로그램 1', url: '', enabled: true },
     { id: 's2', number: '202', value: 'stamp:2', name: '프로그램 2', url: '', enabled: true },
     { id: 's3', number: '203', value: 'stamp:3', name: '프로그램 3', url: '', enabled: true },
-    { id: 's4', number: '204', value: 'stamp:4', name: '프로그램 4', url: '', enabled: true }
+    { id: 's4', number: '204', value: 'stamp:4', name: '프로그램 4', enabled: true }
   ]
 };
 
 (function () {
   'use strict';
 
-  var VERSION = '1.6-fourth-close';
+  var VERSION = '1.7-special-card';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -173,65 +173,55 @@ var CONFIG = {
     return true;
   }
 
-  // 기본 웹링크 API에는 닫기 콜백이 없어 4번만 전용 위젯을 사용합니다.
-  function closeFourthLink(session, showFound) {
-    var panel = session.fourthLink;
+  // 스페셜 카드를 닫아도 별도의 발견 알림을 호출하지 않습니다.
+  function closeSpecialCard(session) {
+    var panel = session.specialCard;
     if (!panel) return true;
     try { panel.widget.destroy(); }
     catch (error) {
-      notify(session.player, '링크 창을 닫지 못했습니다. 닫기 버튼을 다시 눌러주세요.');
+      notify(session.player, '카드를 닫지 못했습니다. 닫기 버튼을 다시 눌러주세요.');
       return false;
     }
-    session.fourthLink = null;
+    session.specialCard = null;
     panel.active = false;
-    if (!showFound || !panel.ready || panel.eventId !== CONFIG.eventId) return true;
-    try {
-      var progress = readProgress(session.player);
-      // 링크 열기/저장 실패 또는 관리자 초기화 후에는 발견 팝업을 띄우지 않습니다.
-      if (progress.ids.indexOf(panel.stampId) < 0) return true;
-      session.player.showAlert(CONFIG.foundMessage);
-    } catch (error) {
-      notify(session.player, '발견 안내를 표시하지 못했습니다. 스탬프 현황을 확인해 주세요.');
-    }
     return true;
   }
 
-  function openFourthLink(session, url, object) {
-    if (!session || session.fourthLink) return false;
+  function openSpecialCard(session, object) {
+    if (!session || session.specialCard) return false;
     var panel;
     try {
-      var widget = session.player.showWidgetResponsive('stamp-link.html', 0, 0, 0, 0);
-      panel = {
-        widget: widget, active: true, ready: false,
-        stampId: object.id, eventId: CONFIG.eventId
-      };
-      session.fourthLink = panel;
+      var widget = session.player.showWidgetResponsive('stamp-special.html', 0, 0, 0, 0);
+      panel = {widget: widget, active: true, stampId: object.id, eventId: CONFIG.eventId};
+      session.specialCard = panel;
       widget.onMessage.Add(function (sender, data) {
-        if (sender !== session.player || session.fourthLink !== panel || !panel.active || !data) return;
-        if (data.type === 'link_ready') {
+        if (sender !== session.player || session.specialCard !== panel || !panel.active || !data) return;
+        if (data.type === 'card_ready') {
           try {
-            widget.sendMessage({type: 'link_state', url: url, title: object.name});
-            panel.ready = true;
+            var progress = readProgress(session.player);
+            if (panel.eventId !== CONFIG.eventId || progress.ids.indexOf(panel.stampId) < 0) {
+              closeSpecialCard(session);
+              return;
+            }
+            widget.sendMessage({type: 'card_state', heading: CONFIG.foundMessage});
           } catch (error) {
-            closeFourthLink(session, false);
-            notify(session.player, '링크 창을 준비하지 못했습니다. 오브젝트를 다시 이용하세요.');
+            closeSpecialCard(session);
+            notify(session.player, '카드를 표시하지 못했습니다. 다시 이용해 주세요.');
           }
-        } else if (data.type === 'link_close') {
-          closeFourthLink(session, true);
+        } else if (data.type === 'card_close') {
+          closeSpecialCard(session);
         }
       });
-      session.lastPopupUrl = url;
-      session.lastPopupAt = Date.now();
       return true;
     } catch (error) {
-      if (panel) closeFourthLink(session, false);
-      notify(session.player, '링크 창을 열지 못했습니다. 다시 시도하세요.');
+      if (panel) closeSpecialCard(session);
+      notify(session.player, '카드를 열지 못했습니다. 다시 시도하세요.');
       return false;
     }
   }
 
   // 링크 열기 호출 성공을 지급 기준으로 사용합니다. 실제 로딩은 검증하지 않습니다.
-  function openLink(player, url, object) {
+  function openLink(player, url) {
     if (typeof url !== 'string' || !/^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(url)) {
       notify(player, '링크가 아직 설정되지 않았습니다. 관리자에게 문의하세요.');
       return false;
@@ -240,9 +230,6 @@ var CONFIG = {
     var now = Date.now();
     if (session && session.lastPopupUrl === url &&
         now - session.lastPopupAt < CONFIG.popupCooldownMs) return false;
-    if (object && object.id === CONFIG.foundStampId) {
-      return openFourthLink(session, url, object);
-    }
     try {
       // 공식 SDK: 두 번째 인자가 true이면 ZEP 팝업으로 표시합니다.
       player.openWebLink(url, true);
@@ -268,7 +255,16 @@ var CONFIG = {
   }
 
   function handleStamp(player, progress, object) {
-    if (!openLink(player, object.url, object)) return;
+    if (object.id === CONFIG.foundStampId) {
+      var session = findSession(player);
+      if (!openSpecialCard(session, object)) return;
+      if (progress.ids.indexOf(object.id) < 0 && !saveStamp(player, progress, object.id)) {
+        closeSpecialCard(session);
+        return;
+      }
+      return;
+    }
+    if (!openLink(player, object.url)) return;
     if (progress.ids.indexOf(object.id) >= 0) {
       notify(player, '이미 획득한 스탬프입니다.');
       return;
@@ -320,7 +316,7 @@ var CONFIG = {
       target.save();
       session.lastPopupUrl = null;
       session.lastPopupAt = 0;
-      closeFourthLink(session, false);
+      closeSpecialCard(session);
     } catch (error) {
       target.storage = previousStorage;
       return false;
@@ -461,7 +457,7 @@ var CONFIG = {
 
   App.onDestroy.Add(function () {
     sessions.forEach(function (session) {
-      closeFourthLink(session, false);
+      closeSpecialCard(session);
       destroyWidget(session);
     });
     sessions = [];
@@ -470,7 +466,7 @@ var CONFIG = {
   App.onLeavePlayer.Add(function (player) {
     sessions = sessions.filter(function (session) {
       if (session.player !== player) return true;
-      closeFourthLink(session, false);
+      closeSpecialCard(session);
       destroyWidget(session);
       return false;
     });
