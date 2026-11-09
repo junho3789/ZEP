@@ -24,7 +24,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.7.2-mobile-close';
+  var VERSION = '1.7.3-card-close';
   var sessions = [];
 
   // 설정과 공통 함수
