@@ -24,7 +24,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.7-special-card';
+  var VERSION = '1.7.1-keyvisual';
   var sessions = [];
 
   // 설정과 공통 함수
