@@ -24,7 +24,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.8-newton-study';
+  var VERSION = '1.8.1-user-art';
   var sessions = [];
 
   // 설정과 공통 함수
