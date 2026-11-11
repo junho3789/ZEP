@@ -24,7 +24,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.7.3-card-close';
+  var VERSION = '1.8-newton-study';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -244,14 +244,66 @@ var CONFIG = {
     }
   }
 
+  function closeEntryNotice(session) {
+    var notice = session && session.entryNotice;
+    if (!notice) return true;
+    try { notice.widget.destroy(); }
+    catch (error) {
+      notify(session.player, '안내 창을 닫지 못했습니다. 닫기 버튼을 다시 눌러주세요.');
+      return false;
+    }
+    notice.active = false;
+    session.entryNotice = null;
+    return true;
+  }
+
+  function sendEntryNotice(session) {
+    var notice = session.entryNotice;
+    if (!notice || !notice.ready) return;
+    try {
+      var collected = countCollected(readProgress(session.player));
+      if (collected >= CONFIG.requiredStamps) { closeEntryNotice(session); return; }
+      notice.widget.sendMessage({
+        type: 'entry_state', count: collected, required: CONFIG.requiredStamps,
+        missing: CONFIG.requiredStamps - collected
+      });
+    } catch (error) {
+      closeEntryNotice(session);
+      notify(session.player, '수집 기록을 확인하지 못했습니다. 다시 이용해 주세요.');
+    }
+  }
+
+  function openEntryNotice(player) {
+    var session = findSession(player);
+    if (!session) return;
+    if (session.entryNotice) { sendEntryNotice(session); return; }
+    try {
+      var widget = player.showWidgetResponsive('stamp-entry.html', 0, 0, 0, 0);
+      var notice = {widget: widget, active: true, ready: false};
+      session.entryNotice = notice;
+      widget.onMessage.Add(function (sender, data) {
+        if (sender !== player || session.entryNotice !== notice || !notice.active || !data) return;
+        if (data.type === 'entry_ready') {
+          notice.ready = true;
+          sendEntryNotice(session);
+        } else if (data.type === 'entry_close') {
+          closeEntryNotice(session);
+        }
+      });
+    } catch (error) {
+      closeEntryNotice(session);
+      notify(player, '안내 팝업을 열지 못했습니다. 다시 이용해 주세요.');
+    }
+  }
+
   function handleDesk(player, progress) {
     var collected = countCollected(progress);
     if (collected >= CONFIG.requiredStamps) {
+      if (!closeEntryNotice(findSession(player))) return;
       openLink(player, CONFIG.formUrl);
       return;
     }
-    notify(player, '현재 ' + collected + '/' + CONFIG.requiredStamps + '개입니다. ' +
-      (CONFIG.requiredStamps - collected) + '개 더 모아주세요.');
+    openEntryNotice(player);
   }
 
   function handleStamp(player, progress, object) {
@@ -316,6 +368,7 @@ var CONFIG = {
       target.save();
       session.lastPopupUrl = null;
       session.lastPopupAt = 0;
+      closeEntryNotice(session);
       closeSpecialCard(session);
     } catch (error) {
       target.storage = previousStorage;
@@ -457,6 +510,7 @@ var CONFIG = {
 
   App.onDestroy.Add(function () {
     sessions.forEach(function (session) {
+      closeEntryNotice(session);
       closeSpecialCard(session);
       destroyWidget(session);
     });
@@ -466,6 +520,7 @@ var CONFIG = {
   App.onLeavePlayer.Add(function (player) {
     sessions = sessions.filter(function (session) {
       if (session.player !== player) return true;
+      closeEntryNotice(session);
       closeSpecialCard(session);
       destroyWidget(session);
       return false;

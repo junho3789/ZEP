@@ -16,7 +16,7 @@ function createApp() {
   vm.runInContext(source, context);
   context.CONFIG.objects.forEach(object => { object.url = 'https://example.com/' + object.id; });
   context.CONFIG.formUrl = 'https://forms.gle/test';
-  const messages = [], links = [], widgets = [], cardWidgets = [], alerts = [];
+  const messages = [], links = [], widgets = [], cardWidgets = [], noticeWidgets = [], alerts = [];
   const player = {
     storage: JSON.stringify({ other: 42 }),
     save() {},
@@ -32,6 +32,7 @@ function createApp() {
         onMessage: { Add(callback) { widget.receive = callback; } }
       };
       if (args[0] === 'stamp-special.html') cardWidgets.push(widget);
+      else if (args[0] === 'stamp-entry.html') noticeWidgets.push(widget);
       else widgets.push(widget);
       return widget;
     }
@@ -43,7 +44,7 @@ function createApp() {
   events.onJoinPlayer(player);
   ready();
   return {
-    context, events, player, messages, links, widgets, cardWidgets, alerts, ready,
+    context, events, player, messages, links, widgets, cardWidgets, noticeWidgets, alerts, ready,
     advance(ms = 1201) { now += ms; },
     hit(number, value) {
       events.onObjectTouched(player, 0, 0, 0, { type: 21, text: number, param1: value });
@@ -607,9 +608,80 @@ test('card data delivery failure cleans the overlay without altering saved stamp
   assert.equal(app.alerts.length,0);
 });
 
-test('special card keeps the uploaded character bytes and has no web iframe', () => {
+test('special card embeds the new Newton study illustration without a web iframe', () => {
   const html=fs.readFileSync(__dirname+'/stamp-special.html','utf8');
   const image=html.split('id="character" src="')[1].split('"')[0];
-  assert.deepEqual(Buffer.from(image.split(',')[1],'base64'),fs.readFileSync(__dirname+'/stamp-four.png'));
+  assert.deepEqual(Buffer.from(image.split(',')[1],'base64'),fs.readFileSync(__dirname+'/newton-study.png'));
   assert.ok(!html.includes('<iframe'));
+});
+
+
+test('insufficient stamps at desk show a designed popup instead of shortage chat', () => {
+  const app=createApp();
+  app.hit(201,'stamp:1');
+  const before=app.messages.length;
+  app.hit(205,'stamp:desk');
+  assert.equal(app.messages.length,before);
+  assert.equal(app.links.length,1);
+  const notice=app.noticeWidgets[0];
+  assert.equal(notice.args[0],'stamp-entry.html');
+  notice.receive(app.player,{type:'entry_ready'});
+  assert.equal(notice.state.count,1);
+  assert.equal(notice.state.required,4);
+  assert.equal(notice.state.missing,3);
+  notice.receive(app.player,{type:'entry_close'});
+  assert.equal(notice.dead,true);
+  assert.equal(app.alerts.length,0);
+});
+
+test('repeated desk entry reuses notice and rejects foreign or stale messages', () => {
+  const app=createApp();
+  app.hit(205,'stamp:desk');
+  const notice=app.noticeWidgets[0];
+  app.hit(205,'stamp:desk');
+  assert.equal(app.noticeWidgets.length,1);
+  notice.receive({}, {type:'entry_close'});
+  assert.equal(notice.dead,false);
+  notice.receive(app.player,{type:'entry_ready'});
+  notice.receive(app.player,{type:'entry_close'});
+  app.hit(205,'stamp:desk');
+  const next=app.noticeWidgets[1];
+  notice.receive(app.player,{type:'entry_close'});
+  assert.equal(next.dead,false);
+});
+
+test('eligible desk closes previous notice and opens the form', () => {
+  const app=createApp();
+  app.hit(205,'stamp:desk');
+  const notice=app.noticeWidgets[0];
+  app.collectAll();
+  app.hit(205,'stamp:desk');
+  assert.equal(notice.dead,true);
+  assert.equal(app.links.at(-1)[0],'https://forms.gle/test');
+});
+
+test('notice handles configurable requirements and zero collected stamps', () => {
+  const app=createApp();
+  app.context.CONFIG.requiredStamps=3;
+  app.hit(205,'stamp:desk');
+  const notice=app.noticeWidgets[0];
+  notice.receive(app.player,{type:'entry_ready'});
+  assert.equal(notice.state.count,0);
+  assert.equal(notice.state.required,3);
+  assert.equal(notice.state.missing,3);
+});
+
+test('notice is destroyed on leave and reset without modifying unrelated storage', () => {
+  const app=createApp();
+  app.hit(205,'stamp:desk');
+  const first=app.noticeWidgets[0];
+  app.player.role=3000;
+  say(app,'!stamp-reset me');
+  say(app,'!stamp-reset confirm');
+  assert.equal(first.dead,true);
+  assert.equal(JSON.parse(app.player.storage).other,42);
+  app.hit(205,'stamp:desk');
+  const second=app.noticeWidgets[1];
+  app.events.onLeavePlayer(app.player);
+  assert.equal(second.dead,true);
 });

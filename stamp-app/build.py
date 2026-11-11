@@ -6,15 +6,15 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-FILES = ('main.js', 'stamp-ui.html', 'stamp-mini.html', 'stamp-special.html')
-DESTINATION = ROOT / 'zep-object-stamps-v1.7.3.zepapp.zip'
+FILES = ('main.js', 'stamp-ui.html', 'stamp-mini.html', 'stamp-special.html', 'stamp-entry.html')
+DESTINATION = ROOT / 'zep-object-stamps-v1.8.zepapp.zip'
 
 
 def main():
     subprocess.run(['node', '--check', str(ROOT / 'main.js')], check=True)
     subprocess.run(['node', str(ROOT / 'test.cjs')], check=True)
     with tempfile.TemporaryDirectory(prefix='zep-stamps-') as directory:
-        for name in ('stamp-ui.html', 'stamp-mini.html', 'stamp-special.html'):
+        for name in ('stamp-ui.html', 'stamp-mini.html', 'stamp-special.html', 'stamp-entry.html'):
             html = (ROOT / name).read_text(encoding='utf-8')
             script = re.search(r'<script>(.*?)</script>', html, re.DOTALL).group(1)
             script_file = Path(directory) / (name + '.js')
