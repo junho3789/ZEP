@@ -24,7 +24,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.8.1-user-art';
+  var VERSION = '1.8.2-external-links';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -221,7 +221,7 @@ var CONFIG = {
   }
 
   // 링크 열기 호출 성공을 지급 기준으로 사용합니다. 실제 로딩은 검증하지 않습니다.
-  function openLink(player, url) {
+  function openLink(player, url, popup) {
     if (typeof url !== 'string' || !/^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(url)) {
       notify(player, '링크가 아직 설정되지 않았습니다. 관리자에게 문의하세요.');
       return false;
@@ -231,8 +231,8 @@ var CONFIG = {
     if (session && session.lastPopupUrl === url &&
         now - session.lastPopupAt < CONFIG.popupCooldownMs) return false;
     try {
-      // 공식 SDK: 두 번째 인자가 true이면 ZEP 팝업으로 표시합니다.
-      player.openWebLink(url, true);
+      // SDK의 popup=false는 새 창, true는 ZEP 팝업입니다. 생략 시 기존 팝업 동작을 유지합니다.
+      player.openWebLink(url, popup !== false);
       if (session) {
         session.lastPopupUrl = url;
         session.lastPopupAt = now;
@@ -316,7 +316,9 @@ var CONFIG = {
       }
       return;
     }
-    if (!openLink(player, object.url)) return;
+    // CONFIG의 첫 번째/두 번째 스탬프만 새 창으로 엽니다. 기존 링크 설정은 그대로 사용합니다.
+    var popup = object !== CONFIG.objects[0] && object !== CONFIG.objects[1];
+    if (!openLink(player, object.url, popup)) return;
     if (progress.ids.indexOf(object.id) >= 0) {
       notify(player, '이미 획득한 스탬프입니다.');
       return;

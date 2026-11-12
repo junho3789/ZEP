@@ -60,14 +60,14 @@ function createApp() {
   };
 }
 
- test('first three programs and eligible desk use the native popup API', () => {
+ test('stamp one and two use new windows while stamp three and form use popups', () => {
   const app = createApp();
   app.hit(205, 'stamp:desk');
   assert.equal(app.links.length, 0);
   app.collectAll();
   app.hit(205, 'stamp:desk');
   assert.equal(app.links.length, 4);
-  assert.ok(app.links.every(args => args[1] === true));
+  assert.deepEqual(app.links.map(args=>args[1]),[false,false,true,true]);
   assert.equal(app.links.at(-1)[0], 'https://forms.gle/test');
   assert.equal(app.widgets.at(-1).state.count, 4);
   assert.equal(JSON.parse(app.player.storage).other, 42);
@@ -684,4 +684,17 @@ test('notice is destroyed on leave and reset without modifying unrelated storage
   const second=app.noticeWidgets[1];
   app.events.onLeavePlayer(app.player);
   assert.equal(second.dead,true);
+});
+
+
+test('new-window mode preserves duplicate prevention and existing custom stamp IDs', () => {
+  const app=createApp();
+  app.context.CONFIG.objects[0].id='custom-first';
+  app.context.CONFIG.objects[1].id='custom-second';
+  app.hit(201,'stamp:1');
+  app.hit(202,'stamp:2');
+  app.advance();
+  app.hit(201,'stamp:1');
+  assert.deepEqual(app.links.map(args=>args[1]),[false,false,false]);
+  assert.equal(savedIds(app.player).length,2);
 });
