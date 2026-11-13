@@ -23,13 +23,13 @@ var CONFIG = {
 
 // 포토부스: 별도 F키 상호작용 오브젝트. 실제 촬영/이미지 저장은 하지 않습니다.
 CONFIG.photoBooth = { enabled: true, number: '206', value: 'photo:booth', stepMs: 1000, flashMs: 160,
-  avatarFrame: { width: 48, height: 64, index: 0 }, upperBodyRatio: 0.65
+  avatarFrame: { width: 0, height: 0, index: 0 }, upperBodyRatio: 0.80
 };
 
 (function () {
   'use strict';
 
-  var VERSION = '1.11-avatar-polaroid';
+  var VERSION = '1.11.1-avatar-framing';
   var sessions = [];
 
   // 설정과 공통 함수

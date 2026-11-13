@@ -15,7 +15,7 @@
 #cancel{position:fixed;top:max(88px,env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));z-index:2}
 #loading{max-width:220px;line-height:1.7;font-size:14px;padding:12px}
 #flash{position:fixed;inset:0;background:white;opacity:0;pointer-events:none}body.flashing #flash{opacity:.82}body.flashing .screen,body.flashing #cancel{visibility:hidden}
-.result{width:min(380px,100%);height:100%;max-height:800px;display:flex;flex-direction:column;gap:12px;align-items:center;min-height:0}.picture{flex:1;min-height:0;width:100%;display:flex;justify-content:center;align-items:center}.picture img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(4px 5px 0 #0878ff)}
+.result{width:min(380px,100%);height:100%;max-height:800px;display:flex;flex-direction:column;gap:12px;align-items:center;min-height:0}.picture{flex:1;min-height:0;width:100%;display:flex;justify-content:center;align-items:center}.picture img{display:block;width:100%;height:100%;object-fit:contain;filter:none}
 .controls{flex:none;width:100%;display:flex;flex-direction:column;gap:8px}.actions{display:flex;gap:7px;justify-content:center;flex-wrap:wrap}.actions button{flex:1;padding:9px 7px;white-space:nowrap}#save{background:var(--blue);color:white}.hint{margin:0;text-align:center;font-size:11px;line-height:1.5;color:#fff}.error{width:min(340px,100%);border:2px solid var(--ink);border-radius:20px;padding:22px;background:var(--lime);box-shadow:5px 5px 0 var(--blue)}.error h1{font-size:20px;margin:0 0 12px}.error p{font-size:13px;line-height:1.7;overflow-wrap:anywhere}.error button{background:white}
 @media(max-height:480px){.screen{padding-top:calc(80px + env(safe-area-inset-top,0px));padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))}.stage{height:100%;width:auto;max-width:260px}.badge{top:8px;font-size:9px}.note{bottom:8px;font-size:10px}#number{font-size:74px}.result{flex-direction:row;width:min(650px,100%);gap:18px}.picture{height:100%;flex:1}.controls{width:220px}.actions{display:grid;grid-template-columns:1fr 1fr}.actions #save{grid-column:1/-1}.error{max-height:100%;overflow:auto;padding:12px}#cancel{top:16px}}
 @media(max-height:360px){.hint{display:none}}
@@ -79,17 +79,16 @@
   }
   function fitText(ctx,text,maxWidth){var letters=Array.from(text);while(letters.length&&ctx.measureText(letters.join('')+'…').width>maxWidth)letters.pop();return letters.length<Array.from(text).length?letters.join('')+'…':text;}
   function compose(image,logo,data){
-    var avatar=bounds(image,data.avatarFrame),canvas=document.createElement('canvas');canvas.width=900;canvas.height=1160;var ctx=canvas.getContext('2d');
-    ctx.fillStyle='#dfff45';ctx.fillRect(0,0,900,1160);
-    ctx.fillStyle='#0878ff';ctx.fillRect(45,45,825,1085);ctx.fillStyle='#fffef8';ctx.fillRect(28,28,832,1088);ctx.strokeStyle='#151515';ctx.lineWidth=3;ctx.strokeRect(28,28,832,1088);
+    var avatar=bounds(image,data.avatarFrame),canvas=document.createElement('canvas');canvas.width=832;canvas.height=1088;var ctx=canvas.getContext('2d');
+    // 기존 좌표계를 유지하되 흰색 폴라로이드 프레임 바깥 여백을 출력에서 제거합니다.
+    ctx.translate(-28,-28);
+    ctx.fillStyle='#fffef8';ctx.fillRect(28,28,832,1088);
     var px=60,py=60,pw=768,ph=760;
     ctx.save();ctx.beginPath();ctx.rect(px,py,pw,ph);ctx.clip();ctx.fillStyle='#dfff45';ctx.fillRect(px,py,pw,ph);
-    ctx.fillStyle='#0878ff';ctx.beginPath();ctx.arc(px+pw*.57,py+ph*.62,ph*.54,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle='#151515';ctx.lineWidth=2;for(var n=0;n<6;n++){ctx.beginPath();ctx.moveTo(px,py+n*150);ctx.lineTo(px+pw,py+n*150);ctx.stroke();}
-    var ratio=Number(data.upperBodyRatio);ratio=isFinite(ratio)?Math.max(.45,Math.min(.85,ratio)):.65;
+    var ratio=Number(data.upperBodyRatio);ratio=isFinite(ratio)?Math.max(.45,Math.min(.95,ratio)):.80;
     var cropHeight=Math.max(1,Math.round(avatar.height*ratio));
-    var scale=Math.min(ph*.83/cropHeight,pw*.82/avatar.width),dw=avatar.width*scale,dh=cropHeight*scale;
-    ctx.imageSmoothingEnabled=false;ctx.drawImage(avatar.source,avatar.x,avatar.y,avatar.width,cropHeight,px+(pw-dw)/2,py+ph-dh,dw,dh);ctx.restore();
+    var scale=Math.min(ph*.74/cropHeight,pw*.72/avatar.width),dw=avatar.width*scale,dh=cropHeight*scale;
+    ctx.imageSmoothingEnabled=false;ctx.drawImage(avatar.source,avatar.x,avatar.y,avatar.width,cropHeight,px+(pw-dw)/2,py+ph-32-dh,dw,dh);ctx.restore();
     ctx.strokeStyle='#151515';ctx.strokeRect(px,py,pw,ph);
     ctx.fillStyle='#151515';ctx.fillRect(82,82,270,46);ctx.fillStyle='#dfff45';ctx.font='800 24px sans-serif';ctx.textAlign='left';ctx.fillText('POST:ME / 2026',98,113);
     ctx.fillStyle='#151515';ctx.textAlign='center';ctx.font='900 48px sans-serif';ctx.fillText(fitText(ctx,String(data.nickname||'방문자'),730),444,892);

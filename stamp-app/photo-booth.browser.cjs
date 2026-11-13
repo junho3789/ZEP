@@ -21,7 +21,8 @@ const assert=require('node:assert/strict');
     x.fillStyle='#ffffff';x.fillRect(19,32,10,13);x.fillStyle='#ff00ff';x.fillRect(15,53,7,10);x.fillRect(26,53,7,10);
     const sheet=document.createElement('canvas');sheet.width=240;sheet.height=256;const sc=sheet.getContext('2d');
     for(let i=0;i<20;i++)sc.drawImage(c,(i%5)*48,Math.floor(i/5)*64);
-    return {single:c.toDataURL().split(',')[1],sheet:sheet.toDataURL().split(',')[1]};
+    const large=document.createElement('canvas');large.width=96;large.height=128;const lc=large.getContext('2d');lc.imageSmoothingEnabled=false;lc.drawImage(c,0,0,96,128);
+    return {single:large.toDataURL().split(',')[1],sheet:sheet.toDataURL().split(',')[1]};
   });
   const requests=[];
   await page.route('https://cdn-static.zep.us/static/assets/baked-avartar-images/**',route=>{
@@ -72,15 +73,32 @@ const assert=require('node:assert/strict');
   assert.deepEqual(seq.map(s=>s.value),['3','2','1']);assert.ok(seq[1].at-seq[0].at>750);assert.ok(seq[2].at-seq[1].at>750);
   await photo().locator('#result').waitFor();
   assert.ok(await page.evaluate(()=>window.flashes.length===1));
-  const preview=await photo().locator('#card').evaluate(img=>({w:img.naturalWidth,h:img.naturalHeight}));assert.deepEqual(preview,{w:900,h:1160});
-  await page.screenshot({path:'/tmp/avatar-polaroid-desktop-v1.11.png'});
+  const preview=await photo().locator('#card').evaluate(img=>({w:img.naturalWidth,h:img.naturalHeight}));assert.deepEqual(preview,{w:832,h:1088});
+  await page.screenshot({path:'/tmp/avatar-polaroid-desktop-v1.11.1.png'});
   const downloadPromise=page.waitForEvent('download');await photo().locator('#save').click();const download=await downloadPromise;
-  assert.match(download.suggestedFilename(),/^NEW-TURN-[0-9]{14}\.png$/);await download.saveAs('/tmp/avatar-polaroid-v1.11.png');
-  const png=fs.readFileSync('/tmp/avatar-polaroid-v1.11.png');assert.equal(png.readUInt32BE(16),900);assert.equal(png.readUInt32BE(20),1160);
-  const colors=await photo().locator('#card').evaluate(img=>{const c=document.createElement('canvas');c.width=900;c.height=1160;const x=c.getContext('2d');x.drawImage(img,0,0);const p=x.getImageData(60,60,768,760).data;let legs=0,skin=0;for(let i=0;i<p.length;i+=4){if(p[i]===255&&p[i+1]===0&&p[i+2]===255)legs++;if(p[i]===255&&p[i+1]===204&&p[i+2]===153)skin++;}return{legs,skin};});
+  assert.match(download.suggestedFilename(),/^NEW-TURN-[0-9]{14}\.png$/);await download.saveAs('/tmp/avatar-polaroid-v1.11.1.png');
+  const png=fs.readFileSync('/tmp/avatar-polaroid-v1.11.1.png');assert.equal(png.readUInt32BE(16),832);assert.equal(png.readUInt32BE(20),1088);
+  const colors=await photo().locator('#card').evaluate(img=>{const c=document.createElement('canvas');c.width=900;c.height=1160;const x=c.getContext('2d');x.drawImage(img,0,0);const p=x.getImageData(32,32,768,760).data;let legs=0,skin=0;for(let i=0;i<p.length;i+=4){if(p[i]===255&&p[i+1]===0&&p[i+2]===255)legs++;if(p[i]===255&&p[i+1]===204&&p[i+2]===153)skin++;}return{legs,skin};});
   assert.equal(colors.legs,0);assert.ok(colors.skin>1000);
+  const framing=await photo().locator('#card').evaluate(img=>{
+    const c=document.createElement('canvas');c.width=900;c.height=1160;const x=c.getContext('2d');x.drawImage(img,28,28);const p=x.getImageData(0,0,900,1160).data;
+    const isBlack=(a,b)=>{let i=(b*900+a)*4;return p[i]===21&&p[i+1]===21&&p[i+2]===21;};
+    let top=1160,bottom=0,torso=0;
+    for(let y=150;y<800;y++)for(let xx=100;xx<790;xx++){
+      if(isBlack(xx,y)){top=Math.min(top,y);bottom=Math.max(bottom,y);}
+      let i=(y*900+xx)*4;if(y>500&&p[i]===255&&p[i+1]===255&&p[i+2]===255)torso++;
+    }
+    let ruled=0;for(let y=150;y<800;y++)if(isBlack(65,y)&&isBlack(100,y))ruled++;
+    return {top,bottom,torso,ruled};
+  });
+  const background=await photo().locator('#card').evaluate(img=>{
+    const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext('2d');x.drawImage(img,0,0);
+    return {edge:Array.from(x.getImageData(0,0,1,1).data),photo:Array.from(x.getImageData(40,200,1,1).data)};
+  });
+  assert.deepEqual(background.edge,[255,254,248,255]);assert.deepEqual(background.photo,[223,255,69,255]);
+  assert.ok(framing.top>160);assert.ok(framing.bottom<800);assert.ok(framing.torso>1000);assert.equal(framing.ruled,0);
   assert.equal(await page.evaluate(()=>window.player.storage),original);
-  await page.evaluate(()=>{window.config.photoBooth.stepMs=500;window.player.avatarFileName='sheet.png';window.player.name='변경된 닉네임';});
+  await page.evaluate(()=>{window.config.photoBooth.stepMs=500;window.player.avatarFileName='sheet.png';window.config.photoBooth.avatarFrame={width:48,height:64,index:0};window.player.name='변경된 닉네임';});
   await photo().locator('#retake').click();await photo().locator('#result').waitFor();assert.ok(requests.some(u=>u.endsWith('sheet.png')));
   await photo().locator('#close').click();await frames.waitFor({state:'detached'});
   assert.equal(await page.frameLocator('iframe[data-file="stamp-ui.html"]').locator('body.photo-hidden').count(),0);
@@ -89,26 +107,26 @@ const assert=require('node:assert/strict');
   await page.evaluate(()=>window.player.avatarFileName='failed.png');await photo().locator('#retry').click();await photo().locator('#error').waitFor();
   assert.equal(await photo().locator('#result').isVisible(),false);
   await page.evaluate(()=>window.player.avatarFileName='no-cors.png');await photo().locator('#retry').click();await photo().locator('#error').waitFor();assert.equal(await photo().locator('#result').isVisible(),false);
-  await page.evaluate(()=>window.player.avatarFileName='demo.png');await photo().locator('#retry').click();await photo().locator('#result').waitFor();
+  await page.evaluate(()=>{window.player.avatarFileName='demo.png';window.config.photoBooth.avatarFrame={width:0,height:0,index:0};});await photo().locator('#retry').click();await photo().locator('#result').waitFor();
   await photo().locator('#close').focus();await page.keyboard.press('Escape');await frames.waitFor({state:'detached'});
   await hit();await photo().locator('#number').filter({hasText:'3'}).waitFor();
   await photo().locator('body').evaluate(()=>{Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});await frames.waitFor({state:'detached'});
   const mobile=await browser.newPage({hasTouch:true,isMobile:true,viewport:{width:390,height:700}});
   await mobile.route('https://cdn-static.zep.us/static/assets/baked-avartar-images/**',route=>route.fulfill({status:200,contentType:'image/png',body:Buffer.from(fixture.single,'base64'),headers:{'access-control-allow-origin':'*'}}));
   await mobile.setContent(assets['photo-booth.html']);
-  await mobile.evaluate(()=>window.postMessage({type:'photo_start',avatarUrl:'https://cdn-static.zep.us/static/assets/baked-avartar-images/demo.png',nickname:'모바일 관람객',stepMs:500,flashMs:80,avatarFrame:{width:48,height:64,index:0}},'*'));
+  await mobile.evaluate(()=>window.postMessage({type:'photo_start',avatarUrl:'https://cdn-static.zep.us/static/assets/baked-avartar-images/demo.png',nickname:'모바일 관람객',stepMs:500,flashMs:80,avatarFrame:{width:0,height:0,index:0}},'*'));
   await mobile.locator('#result').waitFor();
   for(const size of [{width:390,height:700},{width:320,height:568},{width:844,height:390},{width:568,height:320}]){
     await mobile.setViewportSize(size);
     const card=await mobile.locator('#card').boundingBox(),close=await mobile.locator('#close').boundingBox();
     assert.ok(card.x>=0&&card.x+card.width<=size.width);assert.ok(close.y>=70&&close.y+close.height<=size.height-75);
   }
-  await mobile.setViewportSize({width:390,height:700});await mobile.screenshot({path:'/tmp/avatar-polaroid-mobile-v1.11.png'});
+  await mobile.setViewportSize({width:390,height:700});await mobile.screenshot({path:'/tmp/avatar-polaroid-mobile-v1.11.1.png'});
   await mobile.evaluate(()=>{Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});assert.equal(await mobile.locator('#result').isVisible(),true);
   await mobile.evaluate(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,value:async data=>{window.shared={size:data.files[0].size,type:data.files[0].type};}});});
   await mobile.locator('#save').tap();assert.equal(await mobile.evaluate(()=>window.shared.type),'image/png');assert.ok(await mobile.evaluate(()=>window.shared.size>1000));
   await mobile.locator('#close').tap();
   await mobile.close();assert.deepEqual(errors,[]);
-  console.log('PASS avatar CDN loading, bust crop, sheet extraction, 3-2-1/flash, PNG download 900x1160, retake, errors, mobile bounds and touch');
+  console.log('PASS avatar CDN loading, bust crop, sheet extraction, 3-2-1/flash, PNG download 832x1088, retake, errors, mobile bounds and touch');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
