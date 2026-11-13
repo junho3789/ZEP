@@ -17,7 +17,7 @@
 #flash{position:fixed;inset:0;background:white;opacity:0;pointer-events:none}body.flashing #flash{opacity:.82}body.flashing .screen,body.flashing #cancel{visibility:hidden}
 .result{width:min(380px,100%);height:100%;max-height:800px;display:flex;flex-direction:column;gap:12px;align-items:center;min-height:0}.picture{flex:1;min-height:0;width:100%;display:flex;justify-content:center;align-items:center}.picture img{display:block;width:100%;height:100%;object-fit:contain;filter:none}
 .controls{flex:none;width:100%;display:flex;flex-direction:column;gap:8px}.actions{display:flex;gap:7px;justify-content:center;flex-wrap:wrap}.actions button{flex:1;padding:9px 7px;white-space:nowrap}#save{background:var(--blue);color:white}.hint{margin:0;text-align:center;font-size:11px;line-height:1.5;color:#fff}.error{width:min(340px,100%);border:2px solid var(--ink);border-radius:20px;padding:22px;background:var(--lime);box-shadow:5px 5px 0 var(--blue)}.error h1{font-size:20px;margin:0 0 12px}.error p{font-size:13px;line-height:1.7;overflow-wrap:anywhere}.error button{background:white}
-@media(max-height:480px){.screen{padding-top:calc(80px + env(safe-area-inset-top,0px));padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))}.stage{height:100%;width:auto;max-width:260px}.badge{top:8px;font-size:9px}.note{bottom:8px;font-size:10px}#number{font-size:74px}.result{flex-direction:row;width:min(650px,100%);gap:18px}.picture{height:100%;flex:1}.controls{width:220px}.actions{display:grid;grid-template-columns:1fr 1fr}.actions #save{grid-column:1/-1}.error{max-height:100%;overflow:auto;padding:12px}#cancel{top:16px}}
+@media(max-height:480px){.screen{padding-top:calc(80px + env(safe-area-inset-top,0px));padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))}.stage{height:100%;width:auto;max-width:260px}.badge{top:8px;font-size:9px}.note{bottom:8px;font-size:10px}#number{font-size:74px}.result{flex-direction:row;width:min(650px,100%);gap:18px}.picture{height:100%;flex:1}.controls{width:220px}.actions{display:grid;grid-template-columns:1fr 1fr}.error{max-height:100%;overflow:auto;padding:12px}#cancel{top:16px}}
 @media(max-height:360px){.hint{display:none}}
 @media(prefers-reduced-motion:reduce){body.flashing #flash{opacity:.22}}
 </style>
@@ -33,7 +33,7 @@
   <section id="result" class="result" aria-label="나의 아바타 폴라로이드" hidden>
     <div class="picture"><img id="card" alt="내 아바타와 닉네임이 담긴 NEW:TURN 폴라로이드"></div>
     <div class="controls">
-      <div class="actions"><button id="save" type="button">PNG 저장</button><button id="retake" type="button">다시 만들기</button><button id="close" type="button">닫기 ×</button></div>
+      <div class="actions"><button id="save" type="button">PNG 저장</button><button id="close" type="button">닫기 ×</button></div>
       <p id="hint" class="hint" role="status">저장이 안 되면 이미지를 길게 눌러 저장해 주세요.</p>
     </div>
   </section>
@@ -116,7 +116,7 @@
       },flash);},step*3);
     }catch(error){if(job!==generation)return;showError(error.message==='missing'?'현재 아바타 정보가 없습니다. 아바타 꾸미기에서 저장한 뒤 다시 불러와 주세요.':error.name==='SecurityError'?'아바타 이미지의 저장 권한을 확인하지 못했습니다. 관리자에게 문의해 주세요.':'아바타 이미지를 불러오거나 카드를 만들지 못했습니다. 연결 상태를 확인한 뒤 다시 불러와 주세요.');}
   }
-  function retake(){if(phase!=='result'&&phase!=='error')return;stop();revoke();phase='waiting';el('result').hidden=true;el('error').hidden=true;el('stage').hidden=false;el('loading').hidden=false;el('number').hidden=true;el('cancel').hidden=false;post('photo_retake');later(function(){if(phase==='waiting')showError('응답이 없습니다. 닫은 뒤 포토부스를 다시 이용해 주세요.');},12000);}
+  function retry(){if(phase!=='error')return;stop();revoke();phase='waiting';el('result').hidden=true;el('error').hidden=true;el('stage').hidden=false;el('loading').hidden=false;el('number').hidden=true;el('cancel').hidden=false;post('photo_retake');later(function(){if(phase==='waiting')showError('응답이 없습니다. 닫은 뒤 포토부스를 다시 이용해 주세요.');},12000);}
   function download(){var link=document.createElement('a');link.href=imageUrl;link.download=fileName;document.body.append(link);link.click();link.remove();el('hint').textContent='다운로드를 확인해 주세요. 저장되지 않으면 이미지를 길게 눌러 저장할 수 있습니다.';}
   el('save').onclick=async function(){
     if(!blob||phase!=='result')return;el('save').disabled=true;
@@ -126,7 +126,7 @@
       }else download();
     }catch(error){el('hint').textContent='이미지를 길게 누르거나 마우스 오른쪽 버튼으로 저장해 주세요.';}finally{el('save').disabled=false;}
   };
-  ['cancel','close','error-close'].forEach(function(id){el(id).onclick=close;});el('retake').onclick=retake;el('retry').onclick=retake;
+  ['cancel','close','error-close'].forEach(function(id){el(id).onclick=close;});el('retry').onclick=retry;
   document.addEventListener('keydown',function(event){if(event.key==='Escape')close();});
   document.addEventListener('visibilitychange',function(){if(document.hidden&&phase==='countdown')close();});
   window.addEventListener('pagehide',function(){stop();revoke();});

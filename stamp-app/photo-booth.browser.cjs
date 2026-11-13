@@ -74,10 +74,10 @@ const assert=require('node:assert/strict');
   await photo().locator('#result').waitFor();
   assert.ok(await page.evaluate(()=>window.flashes.length===1));
   const preview=await photo().locator('#card').evaluate(img=>({w:img.naturalWidth,h:img.naturalHeight}));assert.deepEqual(preview,{w:832,h:1088});
-  await page.screenshot({path:'/tmp/avatar-polaroid-desktop-v1.11.3.png'});
+  await page.screenshot({path:'/tmp/avatar-polaroid-desktop-v1.11.4.png'});
   const downloadPromise=page.waitForEvent('download');await photo().locator('#save').click();const download=await downloadPromise;
-  assert.match(download.suggestedFilename(),/^NEW-TURN-[0-9]{14}\.png$/);await download.saveAs('/tmp/avatar-polaroid-v1.11.3.png');
-  const png=fs.readFileSync('/tmp/avatar-polaroid-v1.11.3.png');assert.equal(png.readUInt32BE(16),832);assert.equal(png.readUInt32BE(20),1088);
+  assert.match(download.suggestedFilename(),/^NEW-TURN-[0-9]{14}\.png$/);await download.saveAs('/tmp/avatar-polaroid-v1.11.4.png');
+  const png=fs.readFileSync('/tmp/avatar-polaroid-v1.11.4.png');assert.equal(png.readUInt32BE(16),832);assert.equal(png.readUInt32BE(20),1088);
   const colors=await photo().locator('#card').evaluate(img=>{const c=document.createElement('canvas');c.width=900;c.height=1160;const x=c.getContext('2d');x.drawImage(img,0,0);const p=x.getImageData(32,32,768,760).data;let legs=0,skin=0;for(let i=0;i<p.length;i+=4){if(p[i]===255&&p[i+1]===0&&p[i+2]===255)legs++;if(p[i]===255&&p[i+1]===204&&p[i+2]===153)skin++;}return{legs,skin};});
   const bottomPixels=await photo().locator('#card').evaluate(img=>{
     const c=document.createElement('canvas');c.width=832;c.height=1088;const x=c.getContext('2d');x.drawImage(img,0,0);
@@ -105,7 +105,8 @@ const assert=require('node:assert/strict');
   assert.ok(framing.top>160);assert.ok(framing.bottom<821);assert.ok(framing.torso>1000);assert.equal(framing.ruled,0);
   assert.equal(await page.evaluate(()=>window.player.storage),original);
   await page.evaluate(()=>{window.config.photoBooth.stepMs=500;window.player.avatarFileName='sheet.png';window.config.photoBooth.avatarFrame={width:48,height:64,index:0};window.player.name='변경된 닉네임';});
-  await photo().locator('#retake').click();await photo().locator('#result').waitFor();assert.ok(requests.some(u=>u.endsWith('sheet.png')));
+  assert.equal(await photo().locator('#retake').count(),0);assert.equal(await photo().locator('#result button').count(),2);
+  await photo().locator('#close').click();await frames.waitFor({state:'detached'});await hit();await photo().locator('#result').waitFor();assert.ok(requests.some(u=>u.endsWith('sheet.png')));
   await photo().locator('#close').click();await frames.waitFor({state:'detached'});
   assert.equal(await page.frameLocator('iframe[data-file="stamp-ui.html"]').locator('body.photo-hidden').count(),0);
   await page.evaluate(()=>window.player.avatarFileName='');await hit();await photo().locator('#error').waitFor();
@@ -128,12 +129,12 @@ const assert=require('node:assert/strict');
     assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
     assert.ok(card.x>=0&&card.x+card.width<=size.width);assert.ok(close.y>=70&&close.y+close.height<=size.height-75);
   }
-  await mobile.setViewportSize({width:390,height:700});await mobile.screenshot({path:'/tmp/avatar-polaroid-mobile-v1.11.3.png'});
+  await mobile.setViewportSize({width:390,height:700});await mobile.screenshot({path:'/tmp/avatar-polaroid-mobile-v1.11.4.png'});
   await mobile.evaluate(()=>{Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});assert.equal(await mobile.locator('#result').isVisible(),true);
   await mobile.evaluate(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,value:async data=>{window.shared={size:data.files[0].size,type:data.files[0].type};}});});
   await mobile.locator('#save').tap();assert.equal(await mobile.evaluate(()=>window.shared.type),'image/png');assert.ok(await mobile.evaluate(()=>window.shared.size>1000));
   await mobile.locator('#close').tap();
   await mobile.close();assert.deepEqual(errors,[]);
-  console.log('PASS avatar CDN loading, full avatar framing, sheet extraction, 3-2-1/flash, PNG download 832x1088, retake, errors, mobile bounds and touch');
+  console.log('PASS avatar CDN loading, full avatar framing, sheet extraction, 3-2-1/flash, PNG download 832x1088, save/close controls, errors, mobile bounds and touch');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -29,7 +29,7 @@ CONFIG.photoBooth = { enabled: true, number: '206', value: 'photo:booth', stepMs
 (function () {
   'use strict';
 
-  var VERSION = '1.11.3-bottom-aligned';
+  var VERSION = '1.11.4-save-close';
   var sessions = [];
 
   // 설정과 공통 함수
