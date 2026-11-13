@@ -22,12 +22,14 @@ var CONFIG = {
 };
 
 // 포토부스: 별도 F키 상호작용 오브젝트. 실제 촬영/이미지 저장은 하지 않습니다.
-CONFIG.photoBooth = { enabled: true, number: '206', value: 'photo:booth', stepMs: 1000, flashMs: 160 };
+CONFIG.photoBooth = { enabled: true, number: '206', value: 'photo:booth', stepMs: 1000, flashMs: 160,
+  avatarFrame: { width: 48, height: 64, index: 0 }, upperBodyRatio: 0.65
+};
 
 (function () {
   'use strict';
 
-  var VERSION = '1.10-photo-flash';
+  var VERSION = '1.11-avatar-polaroid';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -253,6 +255,12 @@ CONFIG.photoBooth = { enabled: true, number: '206', value: 'photo:booth', stepMs
     return true;
   }
 
+  var ZEP_AVATAR_IMAGE_BASE = 'https://cdn-static.zep.us/static/assets/baked-avartar-images/';
+  function getZepAvatarImage(player) {
+    var fileName = player && player.avatarFileName;
+    return typeof fileName === 'string' && fileName ? ZEP_AVATAR_IMAGE_BASE + fileName : '';
+  }
+
   function openPhotoBooth(session) {
     if (session.photoBooth) return;
     var panel;
@@ -262,28 +270,42 @@ CONFIG.photoBooth = { enabled: true, number: '206', value: 'photo:booth', stepMs
       step = isFinite(step) ? Math.max(500, Math.min(2000, step)) : 1000;
       flash = isFinite(flash) ? Math.max(80, Math.min(300, flash)) : 160;
       var widget = session.player.showWidgetResponsive('photo-booth.html', 0, 0, 0, 0);
-      panel = {widget: widget, active: true, started: false};
+      panel = {widget: widget, active: true, started: false, presented: false, cycle: 0};
       session.photoBooth = panel;
       sendProgress(session);
+      function startCard() {
+        panel.started = true;
+        panel.presented = false;
+        var cycle = ++panel.cycle;
+        try {
+          widget.sendMessage({
+            type: 'photo_start', stepMs: step, flashMs: flash,
+            avatarUrl: getZepAvatarImage(session.player),
+            nickname: String(session.player.name || '방문자').slice(0, 100),
+            takenAt: Date.now(), avatarFrame: config.avatarFrame,
+            upperBodyRatio: config.upperBodyRatio
+          });
+        } catch (error) { closePhotoBooth(session); }
+        // 결과 카드는 이용자가 닫을 때까지 유지하고, 무응답 로딩 창만 정리합니다.
+        App.runLater(function () {
+          if (findSession(session.player) === session && session.photoBooth === panel &&
+              panel.active && panel.cycle === cycle && !panel.presented) closePhotoBooth(session);
+        }, 30);
+      }
       widget.onMessage.Add(function (sender, data) {
         if (sender !== session.player || session.photoBooth !== panel || !panel.active || !data) return;
-        if (data.type === 'photo_ready' && !panel.started) {
-          panel.started = true;
-          try { widget.sendMessage({type: 'photo_start', stepMs: step, flashMs: flash}); }
-          catch (error) { closePhotoBooth(session); }
-        } else if (data.type === 'photo_done' || data.type === 'photo_close') {
-          closePhotoBooth(session);
-        }
+        if (data.type === 'photo_ready' && !panel.started) startCard();
+        else if (data.type === 'photo_presented' && panel.started) panel.presented = true;
+        else if (data.type === 'photo_retake' && panel.presented) startCard();
+        else if (data.type === 'photo_close') closePhotoBooth(session);
       });
-      // HTML이 준비되지 않거나 완료 메시지가 유실되어도 위젯을 정리합니다.
       App.runLater(function () {
-        if (findSession(session.player) === session && session.photoBooth === panel && panel.active) {
-          closePhotoBooth(session);
-        }
-      }, (step * 3 + flash) / 1000 + 5);
+        if (findSession(session.player) === session && session.photoBooth === panel &&
+            panel.active && !panel.started) closePhotoBooth(session);
+      }, 15);
     } catch (error) {
       if (panel) closePhotoBooth(session);
-      notify(session.player, '포토부스 연출을 열지 못했습니다. 다시 시도해 주세요.');
+      notify(session.player, '포토부스를 열지 못했습니다. 다시 시도해 주세요.');
     }
   }
 

@@ -757,7 +757,7 @@ test('photo booth runs independently, guards duplicate inputs, and never changes
   const photo=app.photoWidgets[0];
   photo.receive(app.player,{type:'photo_ready'});
   assert.equal(photo.state.type,'photo_start');assert.equal(photo.state.stepMs,1000);assert.equal(photo.state.flashMs,160);
-  photo.receive(app.player,{type:'photo_done'});
+  photo.receive(app.player,{type:'photo_close'});
   assert.equal(photo.dead,true);assert.equal(app.widgets[0].state.photoActive,false);assert.equal(app.player.storage,before);assert.equal(app.links.length,0);
   app.hit(206,'photo:booth');assert.equal(app.photoWidgets.length,2);
 });
@@ -765,7 +765,7 @@ test('photo booth runs independently, guards duplicate inputs, and never changes
 test('photo booth rejects foreign/stale messages and expired watchdogs', () => {
   const app=createApp();app.hit(206,'photo:booth');
   const first=app.photoWidgets[0];first.receive({}, {type:'photo_close'});assert.equal(first.dead,false);
-  first.receive(app.player,{type:'photo_done'});app.hit(206,'photo:booth');
+  first.receive(app.player,{type:'photo_close'});app.hit(206,'photo:booth');
   const next=app.photoWidgets[1];
   first.receive(app.player,{type:'photo_close'});app.timers[0].fn();assert.equal(next.dead,false);
   app.timers[1].fn();assert.equal(next.dead,true);
@@ -774,7 +774,7 @@ test('photo booth rejects foreign/stale messages and expired watchdogs', () => {
 test('photo booth cleanup supports retry when native destruction throws', () => {
   const app=createApp();app.hit(206,'photo:booth');const photo=app.photoWidgets[0];
   photo.destroy=()=>{throw Error('temporary failure');};
-  photo.receive(app.player,{type:'photo_done'});assert.equal(photo.state.type,'photo_close_failed');
+  photo.receive(app.player,{type:'photo_close'});assert.equal(photo.state.type,'photo_close_failed');
   app.hit(206,'photo:booth');assert.equal(app.photoWidgets.length,1);
   photo.destroy=function(){this.dead=true;};photo.receive(app.player,{type:'photo_close'});assert.equal(photo.dead,true);
 });
@@ -802,4 +802,32 @@ test('photo booth still opens when stamp storage is invalid and recovers after c
   app.player.showWidgetResponsive=function(file,...args){if(file==='photo-booth.html')throw Error('unavailable');return show.call(this,file,...args);};
   app.hit(206,'photo:booth');assert.equal(app.photoWidgets.length,0);
   app.player.showWidgetResponsive=show;app.hit(206,'photo:booth');assert.equal(app.photoWidgets.length,1);assert.equal(app.player.storage,'invalid');
+});
+
+
+test('photo card sends ZEP CDN avatar and nickname and stays open after presentation', () => {
+  const app=createApp();app.player.avatarFileName='my-avatar.png';app.player.name='나의 닉네임';
+  app.hit(206,'photo:booth');const photo=app.photoWidgets[0];photo.receive(app.player,{type:'photo_ready'});
+  assert.equal(photo.state.avatarUrl,'https://cdn-static.zep.us/static/assets/baked-avartar-images/my-avatar.png');
+  assert.equal(photo.state.nickname,'나의 닉네임');assert.equal(photo.state.takenAt,10000);
+  photo.receive(app.player,{type:'photo_presented'});
+  app.timers.forEach(timer=>timer.fn());assert.equal(photo.dead,false);
+  photo.receive(app.player,{type:'photo_done'});assert.equal(photo.dead,false);
+  photo.receive(app.player,{type:'photo_close'});assert.equal(photo.dead,true);
+});
+
+test('retake reads the latest avatar and old watchdog cannot close a new cycle', () => {
+  const app=createApp();app.player.avatarFileName='first.png';app.hit(206,'photo:booth');
+  const photo=app.photoWidgets[0];photo.receive(app.player,{type:'photo_ready'});
+  const oldWatch=app.timers.at(-1);photo.receive(app.player,{type:'photo_presented'});
+  app.player.avatarFileName='new.png';app.player.name='새 이름';app.advance();
+  photo.receive({}, {type:'photo_retake'});assert.ok(photo.state.avatarUrl.endsWith('first.png'));
+  photo.receive(app.player,{type:'photo_retake'});assert.ok(photo.state.avatarUrl.endsWith('new.png'));assert.equal(photo.state.nickname,'새 이름');
+  oldWatch.fn();assert.equal(photo.dead,false);
+  app.timers.at(-1).fn();assert.equal(photo.dead,true);
+});
+
+test('missing avatar filename produces explicit missing URL instead of a substitute avatar', () => {
+  const app=createApp();app.hit(206,'photo:booth');const photo=app.photoWidgets[0];photo.receive(app.player,{type:'photo_ready'});
+  assert.equal(photo.state.avatarUrl,'');assert.equal(photo.state.nickname,'방문자');
 });
