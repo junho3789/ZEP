@@ -24,7 +24,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.9.2-desktop-dock';
+  var VERSION = '1.9.3-desktop-topleft';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -173,7 +173,7 @@ var CONFIG = {
   // 아이콘은 접기/펼치기 중 제거하지 않아 전환 시 빈 화면과 크기 변화를 방지합니다.
   function ensureLauncher(session) {
     var mini = CONFIG.minimized;
-    var align = (session.mobile || session.desktopDock) ? 'middleleft' : mini.align;
+    var align = session.desktopDock ? 'topleft' : (session.mobile ? 'middleleft' : mini.align);
     if (session.launcher && session.launcherAlign === align) return;
     if (session.launcher && !destroyLauncher(session)) return;
     var widget = session.player.showWidget('stamp-mini.html', align, mini.width, mini.height);
@@ -206,7 +206,7 @@ var CONFIG = {
     session.ready = false;
     // 좁은 화면 비율(기존 31% 폭)을 사용하지 않고 HTML이 실제 화면에 맞춰 배치합니다.
     var widget = session.desktopDock
-      ? session.player.showWidget('stamp-ui.html', 'middleleft', 368, session.desktopHeight || 620)
+      ? session.player.showWidget('stamp-ui.html', 'topleft', 368, session.desktopHeight || 620)
       : session.player.showWidgetResponsive('stamp-ui.html', 0, 0, 0, 0);
     session.widget = widget;
     widget.onMessage.Add(function (sender, data) {
