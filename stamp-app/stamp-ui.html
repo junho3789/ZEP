@@ -69,6 +69,9 @@ body.mobile-hud .progress-heading h1{flex:1;margin:0;font-size:14px}
 body.mobile-hud .count{font-size:23px}
 body.mobile-hud #toggle{width:auto;min-width:68px;height:44px;padding:0 10px;flex-shrink:0;border-radius:10px;font-size:12px}
 @media(max-height:480px){body.mobile-hud .hud-layout{padding-top:calc(88px + env(safe-area-inset-top,0px));padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))}body.mobile-hud #content{padding-top:8px}}
+body.desktop-dock .hud-layout{background:transparent;padding:8px 14px 8px 8px;justify-content:flex-start}
+body.desktop-dock header{display:block!important}
+body.desktop-dock main{transform-origin:left center}
 </style>
 </head>
 <body>
@@ -134,7 +137,9 @@ body.mobile-hud #toggle{width:auto;min-width:68px;height:44px;padding:0 10px;fle
   function fitCard() {
     fitScheduled = false;
     var viewport = viewportInfo();
-    var mobile = viewport.width <= 600 || viewport.touch;
+    var desktopDock = !!(currentState && currentState.desktopDock);
+    var mobile = !desktopDock && (viewport.width <= 600 || viewport.touch);
+    document.body.classList.toggle('desktop-dock', desktopDock);
     document.body.classList.toggle('mobile-hud',mobile);
     var parent = document.querySelector(mobile ? '.progress-heading' : '.heading');
     if (toggle.parentElement !== parent) parent.append(toggle);
@@ -220,11 +225,11 @@ body.mobile-hud #toggle{width:auto;min-width:68px;height:44px;padding:0 10px;fle
   }
 
   toggle.onclick = function () { post('collapse'); releaseFocus(); };
-  document.querySelector('.hud-layout').onclick = function (event) {
-    if (event.target === event.currentTarget) { post('collapse'); releaseFocus(); }
-  };
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') { post('collapse'); releaseFocus(); }
+  });
+  document.addEventListener('pointerup', function () {
+    if (currentState && currentState.desktopDock) releaseFocus();
   });
   window.addEventListener('message', function (event) {
     if (event.source !== parentWindow || !event.data || event.data.type !== 'state') return;

@@ -24,7 +24,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.9.1-compact-mobile';
+  var VERSION = '1.9.2-desktop-dock';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -107,6 +107,7 @@ var CONFIG = {
     var payload = {
       type: 'state',
       collapsed: session.collapsed,
+      desktopDock: !!session.desktopDock,
       required: CONFIG.requiredStamps
     };
     try {
@@ -161,6 +162,7 @@ var CONFIG = {
   }
 
   function updateHudViewport(session, viewport) {
+    if (session.desktopDock) return;
     if (!viewport || typeof viewport.width !== 'number' || !isFinite(viewport.width) || viewport.width < 1 || viewport.width > 20000) return;
     var mobile = viewport.width <= 600 || viewport.touch === true;
     if (session.mobile === mobile) return;
@@ -171,7 +173,7 @@ var CONFIG = {
   // 아이콘은 접기/펼치기 중 제거하지 않아 전환 시 빈 화면과 크기 변화를 방지합니다.
   function ensureLauncher(session) {
     var mini = CONFIG.minimized;
-    var align = session.mobile ? 'middleleft' : mini.align;
+    var align = (session.mobile || session.desktopDock) ? 'middleleft' : mini.align;
     if (session.launcher && session.launcherAlign === align) return;
     if (session.launcher && !destroyLauncher(session)) return;
     var widget = session.player.showWidget('stamp-mini.html', align, mini.width, mini.height);
@@ -203,11 +205,22 @@ var CONFIG = {
     if (session.widget) { sendProgress(session); return true; }
     session.ready = false;
     // 좁은 화면 비율(기존 31% 폭)을 사용하지 않고 HTML이 실제 화면에 맞춰 배치합니다.
-    var widget = session.player.showWidgetResponsive('stamp-ui.html', 0, 0, 0, 0);
+    var widget = session.desktopDock
+      ? session.player.showWidget('stamp-ui.html', 'middleleft', 368, session.desktopHeight || 620)
+      : session.player.showWidgetResponsive('stamp-ui.html', 0, 0, 0, 0);
     session.widget = widget;
     widget.onMessage.Add(function (sender, data) {
       if (sender !== session.player || session.widget !== widget || !data) return;
       if (data.type === 'ready') {
+        if (!session.desktopDock && data.viewport && data.viewport.width > 600 && data.viewport.touch !== true) {
+          try { widget.destroy(); } catch (error) { return; }
+          session.widget = null;
+          session.desktopDock = true;
+          session.desktopHeight = Math.max(240, Math.min(620, (data.viewport.height || 780) - 160));
+          session.mobile = false;
+          showHud(session);
+          return;
+        }
         updateHudViewport(session, data.viewport);
         session.ready = true;
         sendProgress(session);

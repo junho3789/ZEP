@@ -208,7 +208,7 @@ test('app shutdown destroys HUDs', () => {
   assert.ok(app.widgets.every(widget => widget.dead));
 });
 
-test('HUD collapses explicitly without global pointer focus handlers', () => {
+test('HUD supports button and Escape while leaving mobile pointer focus alone', () => {
   const html=fs.readFileSync(__dirname+'/stamp-ui.html','utf8');
   const script=html.split('<script>')[1].split('</script>')[0];
   const listeners={},elements={},sent=[];
@@ -218,9 +218,10 @@ test('HUD collapses explicitly without global pointer focus handlers', () => {
   vm.runInNewContext(script,{document,window:{parent,addEventListener(){},requestAnimationFrame(){}}});
   elements.toggle.onclick();
   assert.equal(sent.at(-1).type,'collapse');
-  assert.equal(listeners.pointerup,undefined);
+  listeners.pointerup();
   listeners.keydown({key:'Escape'});
   assert.equal(blurred,2);assert.equal(focused,2);
+  assert.equal(sent.filter(data=>data.type==='collapse').length,2);
 });
 
 function say(app, text, player = app.player) {
@@ -722,4 +723,23 @@ test('mobile viewport moves the persistent launcher below top UI only once', () 
   assert.equal(app.launcherWidgets.length,2);
   hud.receive(app.player,{type:'collapse'});
   assert.equal(mini.state.collapsed,true);
+});
+
+ test('desktop HUD bounds its native widget and keeps docking when reopened', () => {
+  const app=createApp(),initial=app.widgets[0];
+  initial.receive(app.player,{type:'ready',viewport:{width:1280,height:800,touch:false}});
+  assert.equal(initial.dead,true);
+  const dock=app.widgets[1];
+  assert.deepEqual(dock.args,['stamp-ui.html','middleleft',368,620]);
+  dock.receive(app.player,{type:'ready',viewport:{width:368,height:620,touch:false}});
+  assert.equal(dock.state.desktopDock,true);
+  assert.equal(app.widgets.length,2);
+  dock.receive(app.player,{type:'viewport',viewport:{width:368,height:620,touch:false}});
+  assert.equal(app.launcherWidgets.length,2);
+  dock.receive(app.player,{type:'collapse'});
+  assert.equal(dock.dead,true);
+  const mini=app.launcherWidgets[1];
+  mini.receive(app.player,{type:'ready'});
+  mini.receive(app.player,{type:'expand'});
+  assert.deepEqual(app.widgets[2].args,['stamp-ui.html','middleleft',368,620]);
 });
