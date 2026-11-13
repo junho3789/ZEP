@@ -16,7 +16,7 @@ function createApp() {
   vm.runInContext(source, context);
   context.CONFIG.objects.forEach(object => { object.url = 'https://example.com/' + object.id; });
   context.CONFIG.formUrl = 'https://forms.gle/test';
-  const messages = [], links = [], widgets = [], cardWidgets = [], noticeWidgets = [], alerts = [];
+  const messages = [], links = [], widgets = [], launcherWidgets = [], cardWidgets = [], noticeWidgets = [], alerts = [];
   const player = {
     storage: JSON.stringify({ other: 42 }),
     save() {},
@@ -31,7 +31,8 @@ function createApp() {
         sendMessage(state) { this.state = state; },
         onMessage: { Add(callback) { widget.receive = callback; } }
       };
-      if (args[0] === 'stamp-special.html') cardWidgets.push(widget);
+      if (args[0] === 'stamp-mini.html') launcherWidgets.push(widget);
+      else if (args[0] === 'stamp-special.html') cardWidgets.push(widget);
       else if (args[0] === 'stamp-entry.html') noticeWidgets.push(widget);
       else widgets.push(widget);
       return widget;
@@ -40,11 +41,14 @@ function createApp() {
   Object.defineProperty(player, 'moveSpeed', {
     set() { throw Error('Movement speed must not be modified'); }
   });
-  function ready() { widgets.at(-1).receive(player, { type: 'ready' }); }
+  function ready() {
+    if (launcherWidgets.length) launcherWidgets.at(-1).receive(player, {type:'ready'});
+    if (widgets.length && !widgets.at(-1).dead) widgets.at(-1).receive(player, {type:'ready'});
+  }
   events.onJoinPlayer(player);
   ready();
   return {
-    context, events, player, messages, links, widgets, cardWidgets, noticeWidgets, alerts, ready,
+    context, events, player, messages, links, widgets, launcherWidgets, cardWidgets, noticeWidgets, alerts, ready,
     advance(ms = 1201) { now += ms; },
     hit(number, value) {
       events.onObjectTouched(player, 0, 0, 0, { type: 21, text: number, param1: value });
@@ -105,16 +109,21 @@ test('rejoin preserves progress and duplicate join does not leak a HUD', () => {
   assert.equal(app.widgets.at(-1).state.count, 4);
 });
 
-test('collapse removes old HUD and ignores messages from stale widget', () => {
-  const app = createApp();
-  const old = app.widgets.at(-1);
-  old.receive(app.player, { type: 'toggle' });
+test('collapse reveals the existing launcher and ignores stale HUD messages', () => {
+  const app=createApp();
+  const old=app.widgets.at(-1),mini=app.launcherWidgets[0];
+  old.receive(app.player,{type:'collapse'});
+  assert.equal(old.dead,true);
+  assert.equal(mini.dead,false);
+  assert.equal(mini.state.collapsed,true);
+  assert.deepEqual(mini.args,['stamp-mini.html','topleft',76,76]);
+  old.receive(app.player,{type:'toggle'});
+  assert.equal(app.widgets.length,1);
+  mini.receive(app.player,{type:'expand'});
   app.ready();
-  assert.equal(old.dead, true);
-  assert.equal(app.widgets.at(-1).state.collapsed, true);
-  assert.deepEqual(app.widgets.at(-1).args, ['stamp-mini.html', 'topleft', 76, 76]);
-  old.receive(app.player, { type: 'toggle' });
-  assert.equal(app.widgets.length, 2);
+  assert.equal(app.widgets.length,2);
+  assert.equal(app.launcherWidgets.length,1);
+  assert.equal(app.widgets.at(-1).state.collapsed,false);
 });
 
 test('failed widget destruction prevents additional overlapping HUDs', () => {
@@ -199,29 +208,19 @@ test('app shutdown destroys HUDs', () => {
   assert.ok(app.widgets.every(widget => widget.dead));
 });
 
-test('HUD returns keyboard focus after click, pointer release, leaving, and arrow keys', () => {
-  const html = fs.readFileSync(__dirname + '/stamp-ui.html', 'utf8');
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-  const listeners = {}, rootListeners = {};
-  const elements = {};
-  let blurred = 0, focused = 0;
-  const sent = [];
-  const parent = { postMessage: message => sent.push(message), focus: () => { focused++; } };
-  const document = {
-    querySelector() { return {}; },
-    activeElement: { blur: () => { blurred++; } },
-    getElementById(id) { return elements[id] ||= {}; },
-    addEventListener(type, listener) { listeners[type] = listener; },
-    documentElement: { addEventListener(type, listener) { rootListeners[type] = listener; } }
-  };
-  vm.runInNewContext(script, { document, window: { parent, addEventListener() {}, requestAnimationFrame() {} } });
+test('HUD collapses explicitly without global pointer focus handlers', () => {
+  const html=fs.readFileSync(__dirname+'/stamp-ui.html','utf8');
+  const script=html.split('<script>')[1].split('</script>')[0];
+  const listeners={},elements={},sent=[];
+  let blurred=0,focused=0;
+  const parent={postMessage:data=>sent.push(data),focus(){focused++;}};
+  const document={querySelector(){return {};},activeElement:{blur(){blurred++;}},getElementById(id){return elements[id]||={};},addEventListener(type,fn){listeners[type]=fn;}};
+  vm.runInNewContext(script,{document,window:{parent,addEventListener(){},requestAnimationFrame(){}}});
   elements.toggle.onclick();
-  listeners.pointerup();
-  rootListeners.mouseleave();
-  listeners.keydown({ key: 'ArrowUp' });
-  assert.equal(blurred, 4);
-  assert.equal(focused, 4);
-  assert.equal(sent.at(-1).type, 'toggle');
+  assert.equal(sent.at(-1).type,'collapse');
+  assert.equal(listeners.pointerup,undefined);
+  listeners.keydown({key:'Escape'});
+  assert.equal(blurred,2);assert.equal(focused,2);
 });
 
 function say(app, text, player = app.player) {
@@ -364,23 +363,19 @@ test('save failures report partial results and restore failed player storage', (
   assert.ok(app.messages.at(-1).includes('처리 1명, 실패/퇴장 1명'));
 });
 
-test('mini icon keeps progress and expands without changing stored stamps', () => {
-  const app = createApp();
-  app.hit(201, 'stamp:1');
-  app.widgets.at(-1).receive(app.player, {type:'toggle'});
-  app.ready();
-  const mini = app.widgets.at(-1);
-  assert.equal(mini.args[0], 'stamp-mini.html');
-  assert.equal(mini.state.count, 1);
-  app.hit(202, 'stamp:2');
-  assert.equal(mini.state.count, 2);
-  const saved = app.player.storage;
-  mini.receive(app.player, {type:'toggle'});
-  app.ready();
-  assert.equal(app.widgets.at(-1).args[0], 'stamp-ui.html');
-  assert.equal(app.widgets.at(-1).state.count, 2);
-  assert.equal(app.player.storage, saved);
+test('persistent mini icon gets progress while collapsed and expands without data changes', () => {
+  const app=createApp();app.hit(201,'stamp:1');
+  const mini=app.launcherWidgets[0];
+  app.widgets.at(-1).receive(app.player,{type:'collapse'});
+  assert.equal(mini.state.count,1);
+  app.hit(202,'stamp:2');assert.equal(mini.state.count,2);
+  const saved=app.player.storage;
+  mini.receive(app.player,{type:'expand'});app.ready();
+  assert.equal(app.widgets.at(-1).state.count,2);
+  assert.equal(app.player.storage,saved);
+  assert.equal(app.launcherWidgets.length,1);
 });
+
 test('chat command expands the mini icon', () => {
   const app = createApp();
   app.widgets.at(-1).receive(app.player, {type:'toggle'});
@@ -408,46 +403,36 @@ test('mini icon click reopens window and progress stays in accessible label only
   listener({source:parent,data:{type:'state',count:2,required:4}});
   assert.ok(attributes['aria-label'].includes('2/4'));
   launcher.onclick();
-  assert.equal(sent.at(-1).type,'toggle');
+  assert.equal(sent.at(-1).type,'expand');
   assert.equal(blurred,1);
   assert.equal(focused,1);
   listener({source:parent,data:{type:'state',count:4,required:4}});
   assert.equal(attributes.complete,true);
 });
 
-test('false destroy return still switches to mini icon and back without losing stamps', () => {
-  const app = createApp();
-  app.collectAll();
-  const stored = app.player.storage;
-  for (let i = 0; i < 8; i++) {
-    const old = app.widgets.at(-1);
-    old.destroy = function(){ this.dead = true; return false; };
-    old.receive(app.player,{type:'toggle'});
-    app.ready();
-    const current = app.widgets.at(-1);
-    assert.equal(old.dead,true);
-    assert.equal(current.args[0],i % 2 === 0 ? 'stamp-mini.html' : 'stamp-ui.html');
-    assert.equal(current.state.count,4);
-    assert.equal(app.widgets.filter(widget=>!widget.dead).length,1);
-    old.receive(app.player,{type:'toggle'});
-    assert.equal(app.widgets.at(-1),current);
+test('false destroy return still cycles a persistent launcher without data loss', () => {
+  const app=createApp();app.collectAll();const saved=app.player.storage;
+  const mini=app.launcherWidgets[0];
+  for(let i=0;i<8;i++){
+    const old=app.widgets.at(-1);
+    old.destroy=function(){this.dead=true;return false;};
+    old.receive(app.player,{type:'collapse'});
+    assert.equal(old.dead,true);assert.equal(mini.dead,false);
+    mini.receive(app.player,{type:'expand'});app.ready();
+    assert.equal(app.widgets.at(-1).state.count,4);
+    assert.equal(app.widgets.filter(w=>!w.dead).length,1);
+    assert.equal(app.launcherWidgets.length,1);
   }
-  assert.equal(app.player.storage,stored);
-  assert.ok(!app.messages.some(message=>message.includes('UI를 정리하지 못했습니다')));
+  assert.equal(app.player.storage,saved);
 });
-test('destroy exception preserves expanded state and the next click can retry', () => {
-  const app = createApp();
-  const old = app.widgets.at(-1);
-  const destroy = old.destroy;
+
+test('destroy exception keeps expanded state and lets the close action retry', () => {
+  const app=createApp(),old=app.widgets[0],destroy=old.destroy;
   old.destroy=()=>{throw Error('temporary');};
-  old.receive(app.player,{type:'toggle'});
-  assert.equal(old.state.collapsed,false);
-  assert.equal(app.widgets.length,1);
-  old.destroy=destroy;
-  old.receive(app.player,{type:'toggle'});
-  app.ready();
-  assert.equal(app.widgets.at(-1).args[0],'stamp-mini.html');
-  assert.equal(app.widgets.at(-1).state.collapsed,true);
+  old.receive(app.player,{type:'collapse'});
+  assert.equal(old.state.collapsed,false);assert.equal(app.widgets.length,1);
+  old.destroy=destroy;old.receive(app.player,{type:'collapse'});
+  assert.equal(old.dead,true);assert.equal(app.launcherWidgets[0].state.collapsed,true);
 });
 
 test('expanded stamps and mini icon embed the same PNG instead of relative file URLs', () => {
@@ -697,4 +682,29 @@ test('new-window mode preserves duplicate prevention and existing custom stamp I
   app.hit(201,'stamp:1');
   assert.deepEqual(app.links.map(args=>args[1]),[false,false,false]);
   assert.equal(savedIds(app.player).length,2);
+});
+
+
+test('rapid repeated expand requests never recreate the active HUD or launcher', () => {
+  const app=createApp(),mini=app.launcherWidgets[0];
+  app.widgets[0].receive(app.player,{type:'collapse'});
+  for(let i=0;i<20;i++)mini.receive(app.player,{type:'expand'});
+  assert.equal(app.widgets.length,2);assert.equal(app.launcherWidgets.length,1);
+  assert.deepEqual(app.widgets[1].args,['stamp-ui.html',0,0,0,0]);
+  const hud=app.widgets[1];app.ready();
+  for(let i=0;i<20;i++)hud.receive(app.player,{type:'collapse'});
+  assert.equal(hud.dead,true);assert.equal(mini.dead,false);
+});
+
+test('hide and leave clean up both HUD and persistent launcher', () => {
+  const app=createApp(),mini=app.launcherWidgets[0];
+  say(app,'!stamp-ui-hide');
+  assert.equal(mini.dead,true);assert.equal(app.widgets[0].dead,true);
+  mini.receive(app.player,{type:'expand'});
+  assert.equal(app.widgets.length,1);
+  say(app,'!stamps');app.ready();
+  assert.equal(app.launcherWidgets.length,2);
+  app.events.onLeavePlayer(app.player);
+  assert.ok(app.widgets.every(w=>w.dead));
+  assert.ok(app.launcherWidgets.every(w=>w.dead));
 });

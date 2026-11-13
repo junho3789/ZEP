@@ -49,9 +49,20 @@ body.compact .brand img{height:40px}
 @media(prefers-reduced-motion:reduce){.fill{transition:none}}
 [hidden]{display:none!important}
 .stamp img.pixel-art{image-rendering:pixelated}
+
+/* Full viewport frame; the card itself has a readable responsive width. */
+.hud-layout{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px 16px calc(96px + env(safe-area-inset-bottom,0px));height:var(--hud-height,100vh);height:var(--hud-height,100dvh);overflow:hidden;background:transparent}
+body.hud-ready .hud-layout{background:#06142b7a}
+main{position:relative;left:auto;top:auto;flex-shrink:0;width:340px;max-width:100%;transform-origin:center;visibility:hidden}
+body.hud-ready main{visibility:visible}
+#toggle{width:44px;height:44px;font-size:26px}
+@media(max-width:600px){header{padding:13px 13px 10px}.brand img{height:48px}.eyebrow{font-size:8px;letter-spacing:.8px}.subtitle{font-size:11px;margin-top:7px}#content{padding:12px}.count{font-size:24px}.progress-heading{margin-bottom:7px}.grid{margin-top:12px;gap:8px}.item{padding:9px 6px 8px}.stamp{height:54px}.stamp img{width:72px;height:50px}.name{font-size:11px;margin-top:5px}.label{margin-top:4px}.footer{margin-top:12px;padding:8px;font-size:11px;line-height:1.45}.bottom-line{display:none}}
+@media(max-height:480px){.hud-layout{padding:10px 12px calc(80px + env(safe-area-inset-bottom,0px))}header{padding:8px 12px}.eyebrow,.subtitle,.bottom-line{display:none}.heading{margin-top:0}.brand img{height:32px}#content{padding:10px 12px}.grid{margin-top:8px;gap:7px}.stamp{height:44px}.stamp img{height:40px}.item{padding:8px 5px 6px}.footer{margin-top:8px;padding:6px;font-size:10px}.progress-heading{margin-bottom:5px}.count{font-size:21px}}
+@media(max-height:480px) and (min-width:500px){main{width:640px;max-width:100%}.brand{max-width:200px}.grid{grid-template-columns:repeat(4,minmax(0,1fr))}.footer{padding:6px}}
 </style>
 </head>
 <body>
+<div class="hud-layout">
 <main>
 <header>
 <div class="eyebrow"><span>E²FESTA 2026</span><span>STAMP TOUR</span></div>
@@ -66,6 +77,7 @@ body.compact .brand img{height:40px}
 <div class="bottom-line"><span>IDEAS · PEOPLE</span><span>POSSIBILITIES ↗</span></div>
 </section>
 </main>
+</div>
 <script>
 (function () {
   'use strict';
@@ -75,6 +87,7 @@ body.compact .brand img{height:40px}
   var grid = document.getElementById('grid');
   var footer = document.getElementById('footer');
   var currentState = null;
+  var shown = false;
   var fitScheduled = false;
 
   function post(type) { parentWindow.postMessage({type:type}, '*'); }
@@ -106,13 +119,30 @@ body.compact .brand img{height:40px}
 
   function fitCard() {
     fitScheduled = false;
-    var width = Math.max(1, window.innerWidth - 16);
-    var height = Math.max(1, window.innerHeight - 16);
-    var compact = window.innerHeight < 140 || window.innerWidth < 120;
-    document.body.classList.toggle('compact', compact);
-    toggle.setAttribute('aria-expanded', String(!compact && !(currentState && currentState.collapsed)));
+    var visibleHeight = window.visualViewport ? Math.min(window.innerHeight, window.visualViewport.height) : window.innerHeight;
+    document.documentElement.style.setProperty('--hud-height', Math.max(1, visibleHeight) + 'px');
+    var layout = document.querySelector('.hud-layout');
+    var style = window.getComputedStyle(layout);
+    var width = Math.max(1, layout.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 12);
+    var height = Math.max(1, layout.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) - 12);
+    document.body.classList.remove('compact');
+    toggle.setAttribute('aria-expanded', 'true');
     var scale = Math.min(1, width / Math.max(1, card.offsetWidth), height / Math.max(1, card.offsetHeight));
     card.style.transform = 'scale(' + scale + ')';
+  }
+
+  function revealWhenReady() {
+    if (shown) { requestFit(); return; }
+    var images = Array.prototype.slice.call(card.querySelectorAll('img'));
+    Promise.all(images.map(function (image) {
+      return image.decode ? image.decode().catch(function () {}) : Promise.resolve();
+    })).then(function () {
+      window.requestAnimationFrame(function () {
+        fitCard();
+        shown = true;
+        document.body.classList.add('hud-ready');
+      });
+    });
   }
 
   function requestFit() {
@@ -124,15 +154,15 @@ body.compact .brand img{height:40px}
   function renderState(state) {
     currentState = state;
     card.classList.toggle('collapsed', !!state.collapsed);
-    grid.replaceChildren();
     if (state.error) {
+      grid.replaceChildren();
       document.getElementById('count').textContent = '—';
       document.getElementById('required').textContent = '—';
       document.getElementById('fill').style.width = '0';
       footer.className = 'footer';
       footer.textContent = state.error;
       document.querySelector('.track').setAttribute('aria-valuenow', '0');
-      requestFit();
+      revealWhenReady();
       return;
     }
     document.getElementById('count').textContent = String(state.count).padStart(2, '0');
@@ -140,13 +170,24 @@ body.compact .brand img{height:40px}
     document.getElementById('fill').style.width = Math.min(100, state.count / state.required * 100) + '%';
     document.querySelector('.track').setAttribute('aria-valuemax', String(state.required));
     document.querySelector('.track').setAttribute('aria-valuenow', String(state.count));
-    state.objects.forEach(renderStamp);
+    // Preserve image nodes when only counts change; avoid a decode/repaint flash.
+    if (grid.children.length !== state.objects.length) {
+      grid.replaceChildren();
+      state.objects.forEach(renderStamp);
+    } else {
+      state.objects.forEach(function (object, index) {
+        var item = grid.children[index];
+        item.classList.toggle('done', !!object.collected);
+        item.querySelector('.name').textContent = object.name;
+        item.querySelector('.label').textContent = object.collected ? '✓ 수집 완료' : '미수집';
+      });
+    }
     var complete = state.count >= state.required;
     footer.className = 'footer' + (complete ? ' complete' : '');
     footer.textContent = complete
       ? '수집 완료! 안내데스크에서 이벤트에 응모하세요.'
       : '오브젝트에서 F키로 참여하고 스탬프 ' + state.required + '개를 모아보세요.';
-    requestFit();
+    revealWhenReady();
   }
 
   function releaseFocus() {
@@ -154,17 +195,20 @@ body.compact .brand img{height:40px}
     try { parentWindow.focus(); } catch (error) {}
   }
 
-  toggle.onclick = function () { releaseFocus(); post('toggle'); };
-  document.addEventListener('pointerup', releaseFocus);
-  document.documentElement.addEventListener('mouseleave', releaseFocus);
+  toggle.onclick = function () { post('collapse'); releaseFocus(); };
+  document.querySelector('.hud-layout').onclick = function (event) {
+    if (event.target === event.currentTarget) { post('collapse'); releaseFocus(); }
+  };
   document.addEventListener('keydown', function (event) {
-    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Escape'].indexOf(event.key) >= 0) releaseFocus();
+    if (event.key === 'Escape') { post('collapse'); releaseFocus(); }
   });
   window.addEventListener('message', function (event) {
     if (event.source !== parentWindow || !event.data || event.data.type !== 'state') return;
     renderState(event.data);
   });
   window.addEventListener('resize', requestFit);
+  window.addEventListener('orientationchange', requestFit);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', requestFit);
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(requestFit).observe(card);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(requestFit);
   requestFit();

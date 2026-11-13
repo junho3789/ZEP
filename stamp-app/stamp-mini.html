@@ -18,12 +18,13 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent
   launcher.onclick=function(){
     launcher.blur();
     try{window.parent.focus();}catch(error){}
-    window.parent.postMessage({type:'toggle'},'*');
+    window.parent.postMessage({type:'expand'},'*');
   };
   window.addEventListener('message',function(event){
     if(event.source!==window.parent||!event.data||event.data.type!=='state')return;
     var state=event.data;
     launcher.classList.toggle('complete',!state.error&&state.count>=state.required);
+    launcher.setAttribute('aria-expanded',String(!state.collapsed));
     launcher.title=state.error?'스탬프 기록 확인 필요 · 클릭하여 열기':'스탬프 '+state.count+'/'+state.required+'개 · 클릭하여 열기';
     launcher.setAttribute('aria-label',launcher.title);
   });

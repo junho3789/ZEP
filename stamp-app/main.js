@@ -9,7 +9,7 @@ var CONFIG = {
   popupCooldownMs: 1200,
   deskNumber: '205',
   deskValue: 'stamp:desk',
-  // 화면 대비 % 여백. 접으면 아래쪽 여백을 늘려 위젯 높이를 줄입니다.
+  // 이전 버전 위치 설정은 호환용입니다. 펼친 창은 전체 화면 영역에서 반응형으로 배치합니다.
   ui: { top: 8, right: 62, bottom: 20, left: 7 },
   // 접었을 때 좌측 상단 76×76px 영역에 뉴턴 아이콘만 표시합니다.
   minimized: { align: 'topleft', width: 76, height: 76 },
@@ -24,7 +24,7 @@ var CONFIG = {
 (function () {
   'use strict';
 
-  var VERSION = '1.8.2-external-links';
+  var VERSION = '1.9-mobile-hud';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -103,7 +103,7 @@ var CONFIG = {
 
   // 수집 UI: 부모가 준비 메시지를 받은 뒤 상태를 전달합니다.
   function sendProgress(session) {
-    if (!session || !session.ready) return;
+    if (!session) return;
     var payload = {
       type: 'state',
       collapsed: session.collapsed,
@@ -118,8 +118,12 @@ var CONFIG = {
     } catch (error) {
       payload.error = '기록을 읽지 못했습니다. 관리자에게 문의하세요.';
     }
-    try { session.widget.sendMessage(payload); }
-    catch (error) { /* UI 전송 실패가 저장된 스탬프에 영향을 주지 않게 합니다. */ }
+    if (session.widget && session.ready) {
+      try { session.widget.sendMessage(payload); } catch (error) {}
+    }
+    if (session.launcher && session.launcherReady) {
+      try { session.launcher.sendMessage(payload); } catch (error) {}
+    }
   }
 
   function destroyWidget(session) {
@@ -137,39 +141,68 @@ var CONFIG = {
     return true;
   }
 
-  function showHud(session) {
+  function destroyLauncher(session) {
+    if (!session.launcher) return true;
+    try { session.launcher.destroy(); } catch (error) { return false; }
+    session.launcher = null;
+    session.launcherReady = false;
+    return true;
+  }
+
+  function collapseHud(session) {
     if (!destroyWidget(session)) {
       notify(session.player, '창을 전환하지 못했습니다. 잠시 후 다시 눌러주세요.');
+      sendProgress(session);
       return false;
     }
-    session.ready = false;
-    var layout = CONFIG.ui;
+    session.collapsed = true;
+    sendProgress(session);
+    return true;
+  }
+
+  // 아이콘은 접기/펼치기 중 제거하지 않아 전환 시 빈 화면과 크기 변화를 방지합니다.
+  function ensureLauncher(session) {
+    if (session.launcher) return;
     var mini = CONFIG.minimized;
-    var widget = session.collapsed
-      ? session.player.showWidget('stamp-mini.html', mini.align, mini.width, mini.height)
-      : session.player.showWidgetResponsive(
-        'stamp-ui.html', layout.top, layout.right, layout.bottom, layout.left
-      );
+    var widget = session.player.showWidget('stamp-mini.html', mini.align, mini.width, mini.height);
+    session.launcher = widget;
+    session.launcherReady = false;
+    widget.onMessage.Add(function (sender, data) {
+      if (sender !== session.player || session.launcher !== widget || !data) return;
+      if (data.type === 'ready') {
+        session.launcherReady = true;
+        sendProgress(session);
+      } else if (data.type === 'expand' || data.type === 'toggle') {
+        // 반복 탭은 다시 접는 동작이 아니라 동일한 펼치기 요청으로 처리합니다.
+        if (session.widget) return;
+        session.collapsed = false;
+        try { showHud(session); }
+        catch (error) {
+          session.collapsed = true;
+          notify(session.player, '창을 열지 못했습니다. 아이콘을 다시 눌러주세요.');
+        }
+      }
+    });
+  }
+
+  function showHud(session) {
+    ensureLauncher(session);
+    if (session.collapsed) return collapseHud(session);
+    if (session.widget) { sendProgress(session); return true; }
+    session.ready = false;
+    // 좁은 화면 비율(기존 31% 폭)을 사용하지 않고 HTML이 실제 화면에 맞춰 배치합니다.
+    var widget = session.player.showWidgetResponsive('stamp-ui.html', 0, 0, 0, 0);
     session.widget = widget;
     widget.onMessage.Add(function (sender, data) {
       if (sender !== session.player || session.widget !== widget || !data) return;
       if (data.type === 'ready') {
         session.ready = true;
         sendProgress(session);
-      } else if (data.type === 'toggle') {
-        var previousCollapsed = session.collapsed;
-        session.collapsed = !previousCollapsed;
-        try {
-          if (!showHud(session)) {
-            session.collapsed = previousCollapsed;
-            sendProgress(session);
-          }
-        } catch (error) {
-          session.collapsed = previousCollapsed;
-          notify(session.player, '창을 열지 못했습니다. !stamps로 다시 열어주세요.');
-        }
+      } else if (data.type === 'collapse' || data.type === 'toggle') {
+        collapseHud(session);
       }
     });
+    sendProgress(session);
     return true;
   }
 
@@ -489,7 +522,7 @@ var CONFIG = {
     }
     if (text === '!stamp-ui-hide') {
       var current = findSession(player);
-      if (current && !destroyWidget(current)) {
+      if (current && (!destroyWidget(current) || !destroyLauncher(current))) {
         notify(player, 'UI를 정리하지 못했습니다. 맵에 재접속해 주세요.');
       } else {
         notify(player, '스탬프 UI를 숨겼습니다. !stamps로 다시 표시할 수 있습니다.');
@@ -515,6 +548,7 @@ var CONFIG = {
       closeEntryNotice(session);
       closeSpecialCard(session);
       destroyWidget(session);
+      destroyLauncher(session);
     });
     sessions = [];
   });
@@ -525,6 +559,7 @@ var CONFIG = {
       closeEntryNotice(session);
       closeSpecialCard(session);
       destroyWidget(session);
+      destroyLauncher(session);
       return false;
     });
   });
