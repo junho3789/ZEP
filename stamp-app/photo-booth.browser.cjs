@@ -74,12 +74,12 @@ const assert=require('node:assert/strict');
   await photo().locator('#result').waitFor();
   assert.ok(await page.evaluate(()=>window.flashes.length===1));
   const preview=await photo().locator('#card').evaluate(img=>({w:img.naturalWidth,h:img.naturalHeight}));assert.deepEqual(preview,{w:832,h:1088});
-  await page.screenshot({path:'/tmp/avatar-polaroid-desktop-v1.11.1.png'});
+  await page.screenshot({path:'/tmp/avatar-polaroid-desktop-v1.11.2.png'});
   const downloadPromise=page.waitForEvent('download');await photo().locator('#save').click();const download=await downloadPromise;
-  assert.match(download.suggestedFilename(),/^NEW-TURN-[0-9]{14}\.png$/);await download.saveAs('/tmp/avatar-polaroid-v1.11.1.png');
-  const png=fs.readFileSync('/tmp/avatar-polaroid-v1.11.1.png');assert.equal(png.readUInt32BE(16),832);assert.equal(png.readUInt32BE(20),1088);
+  assert.match(download.suggestedFilename(),/^NEW-TURN-[0-9]{14}\.png$/);await download.saveAs('/tmp/avatar-polaroid-v1.11.2.png');
+  const png=fs.readFileSync('/tmp/avatar-polaroid-v1.11.2.png');assert.equal(png.readUInt32BE(16),832);assert.equal(png.readUInt32BE(20),1088);
   const colors=await photo().locator('#card').evaluate(img=>{const c=document.createElement('canvas');c.width=900;c.height=1160;const x=c.getContext('2d');x.drawImage(img,0,0);const p=x.getImageData(32,32,768,760).data;let legs=0,skin=0;for(let i=0;i<p.length;i+=4){if(p[i]===255&&p[i+1]===0&&p[i+2]===255)legs++;if(p[i]===255&&p[i+1]===204&&p[i+2]===153)skin++;}return{legs,skin};});
-  assert.equal(colors.legs,0);assert.ok(colors.skin>1000);
+  assert.ok(colors.legs>1000);assert.ok(colors.skin>1000);
   const framing=await photo().locator('#card').evaluate(img=>{
     const c=document.createElement('canvas');c.width=900;c.height=1160;const x=c.getContext('2d');x.drawImage(img,28,28);const p=x.getImageData(0,0,900,1160).data;
     const isBlack=(a,b)=>{let i=(b*900+a)*4;return p[i]===21&&p[i+1]===21&&p[i+2]===21;};
@@ -121,12 +121,12 @@ const assert=require('node:assert/strict');
     const card=await mobile.locator('#card').boundingBox(),close=await mobile.locator('#close').boundingBox();
     assert.ok(card.x>=0&&card.x+card.width<=size.width);assert.ok(close.y>=70&&close.y+close.height<=size.height-75);
   }
-  await mobile.setViewportSize({width:390,height:700});await mobile.screenshot({path:'/tmp/avatar-polaroid-mobile-v1.11.1.png'});
+  await mobile.setViewportSize({width:390,height:700});await mobile.screenshot({path:'/tmp/avatar-polaroid-mobile-v1.11.2.png'});
   await mobile.evaluate(()=>{Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});assert.equal(await mobile.locator('#result').isVisible(),true);
   await mobile.evaluate(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,value:async data=>{window.shared={size:data.files[0].size,type:data.files[0].type};}});});
   await mobile.locator('#save').tap();assert.equal(await mobile.evaluate(()=>window.shared.type),'image/png');assert.ok(await mobile.evaluate(()=>window.shared.size>1000));
   await mobile.locator('#close').tap();
   await mobile.close();assert.deepEqual(errors,[]);
-  console.log('PASS avatar CDN loading, bust crop, sheet extraction, 3-2-1/flash, PNG download 832x1088, retake, errors, mobile bounds and touch');
+  console.log('PASS avatar CDN loading, full avatar framing, sheet extraction, 3-2-1/flash, PNG download 832x1088, retake, errors, mobile bounds and touch');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

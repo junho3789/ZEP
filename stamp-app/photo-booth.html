@@ -85,9 +85,9 @@
     ctx.fillStyle='#fffef8';ctx.fillRect(28,28,832,1088);
     var px=60,py=60,pw=768,ph=760;
     ctx.save();ctx.beginPath();ctx.rect(px,py,pw,ph);ctx.clip();ctx.fillStyle='#dfff45';ctx.fillRect(px,py,pw,ph);
-    var ratio=Number(data.upperBodyRatio);ratio=isFinite(ratio)?Math.max(.45,Math.min(.95,ratio)):.80;
+    var ratio=Number(data.upperBodyRatio);ratio=isFinite(ratio)?Math.max(.45,Math.min(1,ratio)):1;
     var cropHeight=Math.max(1,Math.round(avatar.height*ratio));
-    var scale=Math.min(ph*.74/cropHeight,pw*.72/avatar.width),dw=avatar.width*scale,dh=cropHeight*scale;
+    var scale=Math.min(ph*.72/cropHeight,pw*.68/avatar.width),dw=avatar.width*scale,dh=cropHeight*scale;
     ctx.imageSmoothingEnabled=false;ctx.drawImage(avatar.source,avatar.x,avatar.y,avatar.width,cropHeight,px+(pw-dw)/2,py+ph-32-dh,dw,dh);ctx.restore();
     ctx.strokeStyle='#151515';ctx.strokeRect(px,py,pw,ph);
     ctx.fillStyle='#151515';ctx.fillRect(82,82,270,46);ctx.fillStyle='#dfff45';ctx.font='800 24px sans-serif';ctx.textAlign='left';ctx.fillText('POST:ME / 2026',98,113);
