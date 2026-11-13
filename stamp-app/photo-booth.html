@@ -8,7 +8,7 @@
 :root{color-scheme:light;--lime:#dfff45;--blue:#0878ff;--ink:#151515}
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;color:var(--ink);font-family:system-ui,-apple-system,'Malgun Gothic',sans-serif}
 [hidden]{display:none!important}button{font:800 13px system-ui;cursor:pointer;min-height:44px;border:2px solid var(--ink);border-radius:14px;padding:9px 15px;background:var(--lime);color:var(--ink)}button:disabled{opacity:.55;cursor:wait}button:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
-.screen{position:fixed;inset:0;height:100vh;height:100dvh;padding:calc(88px + env(safe-area-inset-top,0px)) 16px calc(100px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:center;background:#071020b5}
+.screen{position:fixed;inset:0;height:100vh;height:100dvh;padding:calc(88px + env(safe-area-inset-top,0px)) 16px calc(100px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:center;background:#071020b5;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .stage{position:relative;width:min(320px,100%);aspect-ratio:1;border:2px solid var(--lime);border-radius:24px;display:grid;place-items:center;background:#10182055;box-shadow:5px 5px 0 var(--blue);color:white;text-align:center}
 .badge{position:absolute;top:16px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:5px 12px;border-radius:20px;background:var(--lime);color:var(--ink);font-size:11px;font-weight:900;letter-spacing:1px}
 #number{font-size:clamp(76px,22vw,126px);font-weight:950;line-height:1;color:var(--lime);text-shadow:5px 5px 0 var(--blue);font-variant-numeric:tabular-nums}.note{position:absolute;bottom:18px;left:10px;right:10px;font-size:12px;color:white;font-weight:700}
@@ -87,8 +87,8 @@
     ctx.save();ctx.beginPath();ctx.rect(px,py,pw,ph);ctx.clip();ctx.fillStyle='#dfff45';ctx.fillRect(px,py,pw,ph);
     var ratio=Number(data.upperBodyRatio);ratio=isFinite(ratio)?Math.max(.45,Math.min(1,ratio)):1;
     var cropHeight=Math.max(1,Math.round(avatar.height*ratio));
-    var scale=Math.min(ph*.72/cropHeight,pw*.68/avatar.width),dw=avatar.width*scale,dh=cropHeight*scale;
-    ctx.imageSmoothingEnabled=false;ctx.drawImage(avatar.source,avatar.x,avatar.y,avatar.width,cropHeight,px+(pw-dw)/2,py+ph-32-dh,dw,dh);ctx.restore();
+    var scale=Math.min(ph*.72/cropHeight,pw*.68/avatar.width),dw=Math.round(avatar.width*scale),dh=Math.round(cropHeight*scale);
+    ctx.imageSmoothingEnabled=false;ctx.drawImage(avatar.source,avatar.x,avatar.y,avatar.width,cropHeight,Math.round(px+(pw-dw)/2),py+ph-dh,dw,dh);ctx.restore();
     ctx.strokeStyle='#151515';ctx.strokeRect(px,py,pw,ph);
     ctx.fillStyle='#151515';ctx.fillRect(82,82,270,46);ctx.fillStyle='#dfff45';ctx.font='800 24px sans-serif';ctx.textAlign='left';ctx.fillText('POST:ME / 2026',98,113);
     ctx.fillStyle='#151515';ctx.textAlign='center';ctx.font='900 48px sans-serif';ctx.fillText(fitText(ctx,String(data.nickname||'방문자'),730),444,892);
