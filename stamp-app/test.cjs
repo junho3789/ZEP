@@ -708,3 +708,18 @@ test('hide and leave clean up both HUD and persistent launcher', () => {
   assert.ok(app.widgets.every(w=>w.dead));
   assert.ok(app.launcherWidgets.every(w=>w.dead));
 });
+
+test('mobile viewport moves the persistent launcher below top UI only once', () => {
+  const app=createApp();
+  const hud=app.widgets[0],old=app.launcherWidgets[0];
+  hud.receive(app.player,{type:'viewport',viewport:{width:390,height:700,touch:true}});
+  assert.equal(old.dead,true);
+  const mini=app.launcherWidgets[1];
+  assert.deepEqual(mini.args,['stamp-mini.html','middleleft',76,76]);
+  mini.receive(app.player,{type:'ready'});
+  assert.equal(mini.state.collapsed,false);
+  hud.receive(app.player,{type:'viewport',viewport:{width:844,height:390,touch:true}});
+  assert.equal(app.launcherWidgets.length,2);
+  hud.receive(app.player,{type:'collapse'});
+  assert.equal(mini.state.collapsed,true);
+});

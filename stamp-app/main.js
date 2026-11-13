@@ -2,7 +2,7 @@
 var CONFIG = {
   eventId: 'stamp-event-01',
   requiredStamps: 4,
-  formUrl: '',
+  formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSe8VHtdu6GkU5bpzIsXkphn0wFUvyC83LewjYpATES-N-CNWA/viewform',
   foundStampId: 's4',
   foundMessage: '뉴턴을 찾았습니다.',
   // 동일 링크의 연속 F 입력에 의한 팝업 중첩 방지
@@ -14,17 +14,17 @@ var CONFIG = {
   // 접었을 때 좌측 상단 76×76px 영역에 뉴턴 아이콘만 표시합니다.
   minimized: { align: 'topleft', width: 76, height: 76 },
   objects: [
-    { id: 's1', number: '201', value: 'stamp:1', name: '프로그램 1', url: '', enabled: true },
-    { id: 's2', number: '202', value: 'stamp:2', name: '프로그램 2', url: '', enabled: true },
-    { id: 's3', number: '203', value: 'stamp:3', name: '프로그램 3', url: '', enabled: true },
-    { id: 's4', number: '204', value: 'stamp:4', name: '프로그램 4', enabled: true }
+    { id: 's1', number: '201', value: 'stamp:1', name: '가자! 무대로', url: 'https://www.youtube.com/@e2festa/shorts', enabled: true },
+    { id: 's2', number: '202', value: 'stamp:2', name: '온라인 전시관', url: 'https://e2festa.kr/03/02.php', enabled: true },
+    { id: 's3', number: '203', value: 'stamp:3', name: '공학 유형테스트', url: 'https://smore.im/quiz/6MRlxlFps1', enabled: true },
+    { id: 's4', number: '204', value: 'stamp:4', name: '뉴턴을 찾아라!', enabled: true }
   ]
 };
 
 (function () {
   'use strict';
 
-  var VERSION = '1.9-mobile-hud';
+  var VERSION = '1.9.1-compact-mobile';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -160,12 +160,23 @@ var CONFIG = {
     return true;
   }
 
+  function updateHudViewport(session, viewport) {
+    if (!viewport || typeof viewport.width !== 'number' || !isFinite(viewport.width) || viewport.width < 1 || viewport.width > 20000) return;
+    var mobile = viewport.width <= 600 || viewport.touch === true;
+    if (session.mobile === mobile) return;
+    session.mobile = mobile;
+    try { ensureLauncher(session); } catch (error) {}
+  }
+
   // 아이콘은 접기/펼치기 중 제거하지 않아 전환 시 빈 화면과 크기 변화를 방지합니다.
   function ensureLauncher(session) {
-    if (session.launcher) return;
     var mini = CONFIG.minimized;
-    var widget = session.player.showWidget('stamp-mini.html', mini.align, mini.width, mini.height);
+    var align = session.mobile ? 'middleleft' : mini.align;
+    if (session.launcher && session.launcherAlign === align) return;
+    if (session.launcher && !destroyLauncher(session)) return;
+    var widget = session.player.showWidget('stamp-mini.html', align, mini.width, mini.height);
     session.launcher = widget;
+    session.launcherAlign = align;
     session.launcherReady = false;
     widget.onMessage.Add(function (sender, data) {
       if (sender !== session.player || session.launcher !== widget || !data) return;
@@ -179,6 +190,7 @@ var CONFIG = {
         try { showHud(session); }
         catch (error) {
           session.collapsed = true;
+          sendProgress(session);
           notify(session.player, '창을 열지 못했습니다. 아이콘을 다시 눌러주세요.');
         }
       }
@@ -196,8 +208,11 @@ var CONFIG = {
     widget.onMessage.Add(function (sender, data) {
       if (sender !== session.player || session.widget !== widget || !data) return;
       if (data.type === 'ready') {
+        updateHudViewport(session, data.viewport);
         session.ready = true;
         sendProgress(session);
+      } else if (data.type === 'viewport') {
+        updateHudViewport(session, data.viewport);
       } else if (data.type === 'collapse' || data.type === 'toggle') {
         collapseHud(session);
       }

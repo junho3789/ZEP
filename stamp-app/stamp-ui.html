@@ -59,6 +59,16 @@ body.hud-ready main{visibility:visible}
 @media(max-width:600px){header{padding:13px 13px 10px}.brand img{height:48px}.eyebrow{font-size:8px;letter-spacing:.8px}.subtitle{font-size:11px;margin-top:7px}#content{padding:12px}.count{font-size:24px}.progress-heading{margin-bottom:7px}.grid{margin-top:12px;gap:8px}.item{padding:9px 6px 8px}.stamp{height:54px}.stamp img{width:72px;height:50px}.name{font-size:11px;margin-top:5px}.label{margin-top:4px}.footer{margin-top:12px;padding:8px;font-size:11px;line-height:1.45}.bottom-line{display:none}}
 @media(max-height:480px){.hud-layout{padding:10px 12px calc(80px + env(safe-area-inset-bottom,0px))}header{padding:8px 12px}.eyebrow,.subtitle,.bottom-line{display:none}.heading{margin-top:0}.brand img{height:32px}#content{padding:10px 12px}.grid{margin-top:8px;gap:7px}.stamp{height:44px}.stamp img{height:40px}.item{padding:8px 5px 6px}.footer{margin-top:8px;padding:6px;font-size:10px}.progress-heading{margin-bottom:5px}.count{font-size:21px}}
 @media(max-height:480px) and (min-width:500px){main{width:640px;max-width:100%}.brand{max-width:200px}.grid{grid-template-columns:repeat(4,minmax(0,1fr))}.footer{padding:6px}}
+
+/* Mobile keeps only the close action, progress and stamp missions. */
+body.mobile-hud header{display:none!important}
+body.mobile-hud .hud-layout{padding-top:calc(88px + env(safe-area-inset-top,0px));padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
+body.mobile-hud #content{padding-top:12px}
+body.mobile-hud .progress-heading{gap:8px;align-items:center}
+body.mobile-hud .progress-heading h1{flex:1;margin:0;font-size:14px}
+body.mobile-hud .count{font-size:23px}
+body.mobile-hud #toggle{width:auto;min-width:68px;height:44px;padding:0 10px;flex-shrink:0;border-radius:10px;font-size:12px}
+@media(max-height:480px){body.mobile-hud .hud-layout{padding-top:calc(88px + env(safe-area-inset-top,0px));padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))}body.mobile-hud #content{padding-top:8px}}
 </style>
 </head>
 <body>
@@ -88,9 +98,13 @@ body.hud-ready main{visibility:visible}
   var footer = document.getElementById('footer');
   var currentState = null;
   var shown = false;
+  var lastViewport = null;
   var fitScheduled = false;
 
-  function post(type) { parentWindow.postMessage({type:type}, '*'); }
+  function viewportInfo() {
+    return {width:window.innerWidth,height:window.innerHeight,touch:!!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches)};
+  }
+  function post(type) { parentWindow.postMessage({type:type,viewport:viewportInfo()}, '*'); }
 
   function createElement(tag, className, text) {
     var element = document.createElement(tag);
@@ -119,6 +133,16 @@ body.hud-ready main{visibility:visible}
 
   function fitCard() {
     fitScheduled = false;
+    var viewport = viewportInfo();
+    var mobile = viewport.width <= 600 || viewport.touch;
+    document.body.classList.toggle('mobile-hud',mobile);
+    var parent = document.querySelector(mobile ? '.progress-heading' : '.heading');
+    if (toggle.parentElement !== parent) parent.append(toggle);
+    toggle.textContent = mobile ? '닫기 ×' : '−';
+    toggle.setAttribute('aria-label',mobile ? '스탬프 수집 창 닫기' : '스탬프 창 접기');
+    toggle.title = mobile ? '닫기' : '접기';
+    var signature = viewport.width + ':' + viewport.height + ':' + viewport.touch;
+    if (lastViewport !== signature) { lastViewport = signature; post('viewport'); }
     var visibleHeight = window.visualViewport ? Math.min(window.innerHeight, window.visualViewport.height) : window.innerHeight;
     document.documentElement.style.setProperty('--hud-height', Math.max(1, visibleHeight) + 'px');
     var layout = document.querySelector('.hud-layout');
