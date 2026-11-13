@@ -72,6 +72,8 @@ body.mobile-hud #toggle{width:auto;min-width:68px;height:44px;padding:0 10px;fle
 body.desktop-dock .hud-layout{background:transparent;padding:8px 14px 8px 8px;justify-content:flex-start;align-items:flex-start}
 body.desktop-dock header{display:block!important}
 body.desktop-dock main{transform-origin:left top}
+body.photo-hidden main{visibility:hidden!important}
+body.photo-hidden .hud-layout{background:transparent!important}
 </style>
 </head>
 <body>
@@ -182,6 +184,7 @@ body.desktop-dock main{transform-origin:left top}
 
   function renderState(state) {
     currentState = state;
+    document.body.classList.toggle('photo-hidden',!!state.photoActive);
     card.classList.toggle('collapsed', !!state.collapsed);
     if (state.error) {
       grid.replaceChildren();

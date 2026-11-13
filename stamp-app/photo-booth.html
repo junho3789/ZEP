@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>POST:ME 촬영 연출</title>
+<style>
+:root{color-scheme:light;--lime:#dfff45;--blue:#0878ff;--ink:#151515}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:system-ui,-apple-system,'Malgun Gothic',sans-serif}
+body{display:grid;place-items:center}
+.stage{position:relative;width:min(320px,calc(100vw - 40px));aspect-ratio:1;border:2px solid var(--lime);border-radius:24px;display:grid;place-items:center;background:#10182036;box-shadow:0 0 0 8px #0878ff15}
+.badge{position:absolute;top:16px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:5px 12px;border-radius:20px;background:var(--lime);color:var(--ink);font-size:11px;font-weight:900;letter-spacing:2px}
+#number{font-size:clamp(76px,22vw,126px);font-weight:950;line-height:1;color:var(--lime);text-shadow:5px 5px 0 var(--blue);font-variant-numeric:tabular-nums}
+.note{position:absolute;bottom:18px;left:8px;right:8px;text-align:center;font-size:12px;color:white;font-weight:700;text-shadow:0 1px 3px #000}
+#close{position:absolute;top:max(88px,env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));height:44px;padding:0 16px;border:2px solid var(--ink);border-radius:22px;background:var(--lime);color:var(--ink);font:700 13px system-ui;cursor:pointer}
+#close:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+#flash{position:fixed;inset:0;background:white;opacity:0;pointer-events:none}
+body.flashing .stage,body.flashing #close{visibility:hidden}
+body.flashing #flash{opacity:.82;transition:opacity 50ms linear}
+body.finished .stage{display:none}
+body.finished #flash{opacity:0;transition:none}
+body.finished #close{visibility:visible}
+body:not(.started):not(.finished) .stage{visibility:hidden}
+@media(max-height:420px){.stage{width:min(210px,calc(100vh - 44px))}.badge{top:8px;font-size:9px}.note{bottom:10px;font-size:10px}#number{font-size:85px}#close{top:16px}}
+@media(prefers-reduced-motion:reduce){body.flashing #flash{opacity:.22;transition:none}}
+</style>
+</head>
+<body>
+<div class="stage" aria-label="촬영 카운트다운">
+  <div class="badge">POST:ME · NEW:TURN</div>
+  <div id="number" role="status" aria-live="polite"></div>
+  <div class="note">잠시 포즈를 취해 주세요!</div>
+</div>
+<button id="close" type="button" aria-label="촬영 연출 닫기">닫기 ×</button>
+<div id="flash" aria-hidden="true"></div>
+<script>
+(function () {
+  'use strict';
+  var host = window.parent;
+  var timers = [], started = false, stopped = false;
+  var number = document.getElementById('number');
+  var close = document.getElementById('close');
+  function post(type) { host.postMessage({type: type}, '*'); }
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+  function later(fn, ms) { timers.push(setTimeout(function () { if (!stopped) fn(); }, ms)); }
+  function finish(type) {
+    stopped = true;
+    clearTimers();
+    document.body.classList.remove('flashing');
+    document.body.classList.add('finished');
+    post(type);
+    try { host.focus(); } catch (error) {}
+  }
+  function start(data) {
+    if (started || stopped) return;
+    started = true;
+    var step = Number(data.stepMs), flash = Number(data.flashMs);
+    step = isFinite(step) ? Math.max(500, Math.min(2000, step)) : 1000;
+    flash = isFinite(flash) ? Math.max(80, Math.min(300, flash)) : 160;
+    document.body.classList.add('started');
+    number.textContent = '3';
+    close.focus({preventScroll: true});
+    later(function () { number.textContent = '2'; }, step);
+    later(function () { number.textContent = '1'; }, step * 2);
+    later(function () {
+      number.textContent = '';
+      document.body.classList.add('flashing');
+      later(function () { finish('photo_done'); }, flash);
+    }, step * 3);
+    // 백그라운드로 전환하면 지연된 플래시를 실행하지 않습니다.
+  }
+  close.onclick = function () { finish('photo_close'); };
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') finish('photo_close');
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && started && !stopped) finish('photo_close');
+  });
+  window.addEventListener('pagehide', function () { stopped = true; clearTimers(); });
+  window.addEventListener('message', function (event) {
+    if (event.source !== host || !event.data) return;
+    if (event.data.type === 'photo_start') start(event.data);
+    if (event.data.type === 'photo_close_failed') {
+      stopped = true;
+      clearTimers();
+      document.body.classList.remove('flashing');
+      document.body.classList.add('finished');
+      close.textContent = '닫기 다시 시도 ×';
+    }
+  });
+  // 준비/시작 메시지가 유실되어도 화면을 무기한 덮지 않습니다.
+  later(function () { finish('photo_close'); }, 12000);
+  post('photo_ready');
+}());
+</script>
+</body>
+</html>

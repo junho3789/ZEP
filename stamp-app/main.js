@@ -21,10 +21,13 @@ var CONFIG = {
   ]
 };
 
+// 포토부스: 별도 F키 상호작용 오브젝트. 실제 촬영/이미지 저장은 하지 않습니다.
+CONFIG.photoBooth = { enabled: true, number: '206', value: 'photo:booth', stepMs: 1000, flashMs: 160 };
+
 (function () {
   'use strict';
 
-  var VERSION = '1.9.3-desktop-topleft';
+  var VERSION = '1.10-photo-flash';
   var sessions = [];
 
   // 설정과 공통 함수
@@ -107,6 +110,7 @@ var CONFIG = {
     var payload = {
       type: 'state',
       collapsed: session.collapsed,
+      photoActive: !!session.photoBooth,
       desktopDock: !!session.desktopDock,
       required: CONFIG.requiredStamps
     };
@@ -232,6 +236,55 @@ var CONFIG = {
     });
     sendProgress(session);
     return true;
+  }
+
+  // 촬영 연출은 이용자별 위젯만 사용하며 스탬프/이동 속도/아바타를 변경하지 않습니다.
+  function closePhotoBooth(session) {
+    var panel = session.photoBooth;
+    if (!panel) return true;
+    try { panel.widget.destroy(); }
+    catch (error) {
+      try { panel.widget.sendMessage({type: 'photo_close_failed'}); } catch (ignored) {}
+      return false;
+    }
+    panel.active = false;
+    session.photoBooth = null;
+    sendProgress(session);
+    return true;
+  }
+
+  function openPhotoBooth(session) {
+    if (session.photoBooth) return;
+    var panel;
+    try {
+      var config = CONFIG.photoBooth;
+      var step = Number(config.stepMs), flash = Number(config.flashMs);
+      step = isFinite(step) ? Math.max(500, Math.min(2000, step)) : 1000;
+      flash = isFinite(flash) ? Math.max(80, Math.min(300, flash)) : 160;
+      var widget = session.player.showWidgetResponsive('photo-booth.html', 0, 0, 0, 0);
+      panel = {widget: widget, active: true, started: false};
+      session.photoBooth = panel;
+      sendProgress(session);
+      widget.onMessage.Add(function (sender, data) {
+        if (sender !== session.player || session.photoBooth !== panel || !panel.active || !data) return;
+        if (data.type === 'photo_ready' && !panel.started) {
+          panel.started = true;
+          try { widget.sendMessage({type: 'photo_start', stepMs: step, flashMs: flash}); }
+          catch (error) { closePhotoBooth(session); }
+        } else if (data.type === 'photo_done' || data.type === 'photo_close') {
+          closePhotoBooth(session);
+        }
+      });
+      // HTML이 준비되지 않거나 완료 메시지가 유실되어도 위젯을 정리합니다.
+      App.runLater(function () {
+        if (findSession(session.player) === session && session.photoBooth === panel && panel.active) {
+          closePhotoBooth(session);
+        }
+      }, (step * 3 + flash) / 1000 + 5);
+    } catch (error) {
+      if (panel) closePhotoBooth(session);
+      notify(session.player, '포토부스 연출을 열지 못했습니다. 다시 시도해 주세요.');
+    }
   }
 
   // 스페셜 카드를 닫아도 별도의 발견 알림을 호출하지 않습니다.
@@ -393,6 +446,12 @@ var CONFIG = {
   function handleInteraction(player, number, value) {
     var session = findSession(player);
     if (!session || session.busy) return;
+    // 포토부스는 스탬프 저장 데이터가 손상된 경우에도 독립적으로 동작합니다.
+    var photo = CONFIG.photoBooth;
+    if (photo && photo.enabled && number === String(photo.number) && value === photo.value) {
+      openPhotoBooth(session);
+      return;
+    }
     session.busy = true;
     try {
       var progress = readProgress(player);
@@ -431,6 +490,7 @@ var CONFIG = {
       target.save();
       session.lastPopupUrl = null;
       session.lastPopupAt = 0;
+      closePhotoBooth(session);
       closeEntryNotice(session);
       closeSpecialCard(session);
     } catch (error) {
@@ -573,6 +633,7 @@ var CONFIG = {
 
   App.onDestroy.Add(function () {
     sessions.forEach(function (session) {
+      closePhotoBooth(session);
       closeEntryNotice(session);
       closeSpecialCard(session);
       destroyWidget(session);
@@ -584,6 +645,7 @@ var CONFIG = {
   App.onLeavePlayer.Add(function (player) {
     sessions = sessions.filter(function (session) {
       if (session.player !== player) return true;
+      closePhotoBooth(session);
       closeEntryNotice(session);
       closeSpecialCard(session);
       destroyWidget(session);

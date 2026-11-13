@@ -6,7 +6,8 @@ const source = fs.readFileSync(__dirname + '/main.js', 'utf8');
 
 function createApp() {
   const events = {};
-  const App = {};
+  const timers = [];
+  const App = {runLater(fn, seconds) { timers.push({fn, seconds}); }};
   let now = 10000;
   for (const name of ['onJoinPlayer', 'onLeavePlayer', 'onObjectTouched', 'onSay', 'onDestroy']) {
     App[name] = { Add: callback => { events[name] = callback; } };
@@ -16,7 +17,7 @@ function createApp() {
   vm.runInContext(source, context);
   context.CONFIG.objects.forEach(object => { object.url = 'https://example.com/' + object.id; });
   context.CONFIG.formUrl = 'https://forms.gle/test';
-  const messages = [], links = [], widgets = [], launcherWidgets = [], cardWidgets = [], noticeWidgets = [], alerts = [];
+  const messages = [], links = [], widgets = [], launcherWidgets = [], cardWidgets = [], noticeWidgets = [], photoWidgets = [], alerts = [];
   const player = {
     storage: JSON.stringify({ other: 42 }),
     save() {},
@@ -34,6 +35,7 @@ function createApp() {
       if (args[0] === 'stamp-mini.html') launcherWidgets.push(widget);
       else if (args[0] === 'stamp-special.html') cardWidgets.push(widget);
       else if (args[0] === 'stamp-entry.html') noticeWidgets.push(widget);
+      else if (args[0] === 'photo-booth.html') photoWidgets.push(widget);
       else widgets.push(widget);
       return widget;
     }
@@ -48,7 +50,7 @@ function createApp() {
   events.onJoinPlayer(player);
   ready();
   return {
-    context, events, player, messages, links, widgets, launcherWidgets, cardWidgets, noticeWidgets, alerts, ready,
+    context, events, player, messages, links, widgets, launcherWidgets, cardWidgets, noticeWidgets, photoWidgets, timers, alerts, ready,
     advance(ms = 1201) { now += ms; },
     hit(number, value) {
       events.onObjectTouched(player, 0, 0, 0, { type: 21, text: number, param1: value });
@@ -743,4 +745,61 @@ test('mobile viewport moves the persistent launcher below top UI only once', () 
   mini.receive(app.player,{type:'ready'});
   mini.receive(app.player,{type:'expand'});
   assert.deepEqual(app.widgets[2].args,['stamp-ui.html','topleft',368,620]);
+});
+
+
+test('photo booth runs independently, guards duplicate inputs, and never changes stamps', () => {
+  const app=createApp(),before=app.player.storage;
+  app.hit(206,'wrong');assert.equal(app.photoWidgets.length,0);
+  app.hit(206,'photo:booth');app.hit(206,'photo:booth');
+  assert.equal(app.photoWidgets.length,1);
+  assert.equal(app.widgets[0].state.photoActive,true);
+  const photo=app.photoWidgets[0];
+  photo.receive(app.player,{type:'photo_ready'});
+  assert.equal(photo.state.type,'photo_start');assert.equal(photo.state.stepMs,1000);assert.equal(photo.state.flashMs,160);
+  photo.receive(app.player,{type:'photo_done'});
+  assert.equal(photo.dead,true);assert.equal(app.widgets[0].state.photoActive,false);assert.equal(app.player.storage,before);assert.equal(app.links.length,0);
+  app.hit(206,'photo:booth');assert.equal(app.photoWidgets.length,2);
+});
+
+test('photo booth rejects foreign/stale messages and expired watchdogs', () => {
+  const app=createApp();app.hit(206,'photo:booth');
+  const first=app.photoWidgets[0];first.receive({}, {type:'photo_close'});assert.equal(first.dead,false);
+  first.receive(app.player,{type:'photo_done'});app.hit(206,'photo:booth');
+  const next=app.photoWidgets[1];
+  first.receive(app.player,{type:'photo_close'});app.timers[0].fn();assert.equal(next.dead,false);
+  app.timers[1].fn();assert.equal(next.dead,true);
+});
+
+test('photo booth cleanup supports retry when native destruction throws', () => {
+  const app=createApp();app.hit(206,'photo:booth');const photo=app.photoWidgets[0];
+  photo.destroy=()=>{throw Error('temporary failure');};
+  photo.receive(app.player,{type:'photo_done'});assert.equal(photo.state.type,'photo_close_failed');
+  app.hit(206,'photo:booth');assert.equal(app.photoWidgets.length,1);
+  photo.destroy=function(){this.dead=true;};photo.receive(app.player,{type:'photo_close'});assert.equal(photo.dead,true);
+});
+
+test('disabled photo booth and configurable object matching are respected', () => {
+  const app=createApp();app.context.CONFIG.photoBooth.enabled=false;app.hit(206,'photo:booth');assert.equal(app.photoWidgets.length,0);
+  Object.assign(app.context.CONFIG.photoBooth,{enabled:true,number:'801',value:'photo:test',stepMs:99999,flashMs:NaN});
+  app.hit(206,'photo:booth');assert.equal(app.photoWidgets.length,0);
+  app.hit(801,'photo:test');const photo=app.photoWidgets[0];photo.receive(app.player,{type:'photo_ready'});
+  assert.equal(photo.state.stepMs,2000);assert.equal(photo.state.flashMs,160);
+});
+
+test('photo booth cleanup occurs on leave, shutdown and administrator reset', () => {
+  for(const action of ['leave','shutdown','reset']) {
+    const app=createApp();app.hit(206,'photo:booth');const photo=app.photoWidgets[0];
+    if(action==='leave')app.events.onLeavePlayer(app.player);
+    if(action==='shutdown')app.events.onDestroy();
+    if(action==='reset'){app.player.role=3000;say(app,'!stamp-reset me');say(app,'!stamp-reset confirm');}
+    assert.equal(photo.dead,true,action);
+  }
+});
+
+test('photo booth still opens when stamp storage is invalid and recovers after creation failure', () => {
+  const app=createApp();app.player.storage='invalid';const show=app.player.showWidgetResponsive;
+  app.player.showWidgetResponsive=function(file,...args){if(file==='photo-booth.html')throw Error('unavailable');return show.call(this,file,...args);};
+  app.hit(206,'photo:booth');assert.equal(app.photoWidgets.length,0);
+  app.player.showWidgetResponsive=show;app.hit(206,'photo:booth');assert.equal(app.photoWidgets.length,1);assert.equal(app.player.storage,'invalid');
 });
